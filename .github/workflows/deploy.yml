@@ -1,8 +1,16 @@
+# Déploiement automatisé — inactif pour l'instant.
+#
+# GitHub Actions est bloqué sur ce compte (« account is locked due to a billing
+# issue »). Le site est donc publié depuis la branche gh-pages, construite en
+# local par `npm run deploy`.
+#
+# Pour repasser à l'automatique une fois la facturation régularisée :
+#   1. régler le problème sur https://github.com/settings/billing
+#   2. Settings → Pages → Source : « GitHub Actions »
+#   3. rétablir le déclencheur `push` ci-dessous
 name: Déploiement GitHub Pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

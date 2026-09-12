@@ -3,6 +3,9 @@
 Application personnelle de gestion d'emploi du temps, de quotas horaires et de rémunération
 pour un enseignant intervenant dans plusieurs écoles à Dakar.
 
+**En ligne : https://techbadji.github.io/timer/** — à ouvrir depuis le téléphone puis
+« Ajouter à l'écran d'accueil » pour l'installer comme une application.
+
 **100 % hors-ligne, mono-appareil, sans compte ni serveur.** Toutes les données vivent dans
 IndexedDB, sur l'appareil. Interface en français, montants en FCFA, heures locales (Dakar, GMT).
 
@@ -15,7 +18,28 @@ npm run build    # bundle de production + Service Worker
 npm run preview  # sert le build (à ouvrir depuis le mobile pour installer la PWA)
 npm test         # logique métier + couche de persistance
 npm run icons    # régénère les icônes PWA
+npm run deploy   # construit et publie sur https://techbadji.github.io/timer/
 ```
+
+## Déploiement
+
+Le site est servi par GitHub Pages depuis la branche `gh-pages`, construite en local :
+
+```bash
+npm run deploy
+```
+
+Le script construit `dist/`, y ajoute un `.nojekyll` et force-pousse le tout sur `gh-pages`.
+La branche `main` ne contient que les sources ; elle n'est jamais servie directement.
+
+En production, l'application vit sous le chemin `/timer/` : `vite.config.js` fixe `base` selon
+le mode, et le code qui fabrique des URL absolues (icônes et liens des notifications) passe par
+`import.meta.env.BASE_URL`. Le développement local reste à la racine.
+
+Un workflow GitHub Actions (`.github/workflows/deploy.yml`) est prêt pour automatiser tout cela,
+mais il est en déclenchement manuel uniquement : Actions est actuellement bloqué sur le compte
+pour un problème de facturation. Une fois celui-ci réglé, il suffit de rétablir le déclencheur
+`push` et de basculer la source Pages sur « GitHub Actions ».
 
 ## Stack
 

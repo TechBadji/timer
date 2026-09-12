@@ -1,0 +1,1 @@
+var e=new Intl.NumberFormat(`fr-FR`,{maximumFractionDigits:0}),t=t=>`${e.format(Math.round(t||0))} FCFA`,n=e=>{let t=Math.round(e||0);return Math.abs(t)>=1e6?`${(t/1e6).toFixed(t%1e6?1:0)}M`:Math.abs(t)>=1e3?`${Math.round(t/1e3)}k`:String(t)},r=e=>String(e).replace(/[  ]/g,` `);export{n,r,t};

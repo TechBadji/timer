@@ -1,0 +1,173 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-ink-100 text-ink-900 antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'tnum' 0;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+  /* Chiffres alignés dans les tableaux et les montants */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  input,
+  select,
+  textarea {
+    font-size: 16px; /* évite le zoom automatique sur iOS */
+  }
+}
+
+@layer components {
+  .carte {
+    @apply rounded-2xl bg-white shadow-card;
+  }
+  .champ {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-[15px] text-ink-900
+      outline-none transition placeholder:text-ink-400
+      focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10;
+  }
+  .champ-liste {
+    @apply appearance-none pr-9;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 16px;
+  }
+  .etiquette {
+    @apply mb-1.5 block text-[13px] font-medium text-ink-600;
+  }
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2.5
+      text-[15px] font-semibold transition active:scale-[.98] disabled:pointer-events-none disabled:opacity-40;
+  }
+  .btn-primaire {
+    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700;
+  }
+  .btn-secondaire {
+    @apply btn border border-ink-200 bg-white text-ink-700 hover:bg-ink-50;
+  }
+  .btn-fantome {
+    @apply btn text-ink-600 hover:bg-ink-100;
+  }
+  .btn-danger {
+    @apply btn bg-rose-50 text-rose-700 hover:bg-rose-100;
+  }
+  .puce {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold;
+  }
+  .segment {
+    @apply flex rounded-xl bg-ink-100 p-1;
+  }
+  .segment > button {
+    @apply flex-1 rounded-lg px-3 py-1.5 text-[13px] font-semibold text-ink-500 transition;
+  }
+  .segment > button[data-actif='true'] {
+    @apply bg-white text-ink-900 shadow-sm;
+  }
+}
+
+/* ------------------------------ FullCalendar ------------------------------ */
+.fc {
+  --fc-border-color: #e8ecf2;
+  --fc-today-bg-color: #eef2ff80;
+  --fc-now-indicator-color: #e11d48;
+  --fc-page-bg-color: #ffffff;
+  --fc-small-font-size: 11px;
+  font-family: inherit;
+}
+.fc .fc-toolbar.fc-header-toolbar {
+  display: none; /* on pilote la navigation depuis notre propre barre */
+}
+.fc .fc-col-header-cell-cushion {
+  @apply py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500;
+}
+.fc .fc-timegrid-slot-label-cushion {
+  @apply text-[11px] tabular text-ink-400;
+}
+.fc .fc-timegrid-slot {
+  height: 2.6rem;
+}
+.fc .fc-daygrid-day-number {
+  @apply p-1.5 text-[12px] font-semibold text-ink-600;
+}
+.fc .fc-day-today .fc-daygrid-day-number {
+  @apply text-brand-600;
+}
+.fc-theme-standard td,
+.fc-theme-standard th {
+  border-color: var(--fc-border-color);
+}
+.fc .fc-event {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+.fc .fc-timegrid-event .fc-event-main {
+  padding: 0;
+}
+.fc-event-selected::after,
+.fc-event:focus::after {
+  display: none;
+}
+.fc .fc-highlight {
+  background: #6366f11a;
+}
+.fc .fc-scrollgrid {
+  border-radius: 12px;
+  overflow: hidden;
+}
+.fc .fc-list-event:hover td {
+  background: #f8fafc;
+}
+.fc .fc-list-day-cushion {
+  @apply bg-ink-50 text-[13px] font-semibold;
+}
+
+/* Sur ordinateur, le calendrier respire : créneaux, en-têtes et cases plus grands. */
+@media (min-width: 1024px) {
+  .fc {
+    --fc-small-font-size: 12px;
+  }
+  .fc .fc-timegrid-slot {
+    height: 2rem;
+  }
+  .fc .fc-col-header-cell-cushion {
+    @apply py-3 text-[12px];
+  }
+  .fc .fc-timegrid-slot-label-cushion {
+    @apply text-[12px];
+  }
+  .fc .fc-daygrid-day-number {
+    @apply p-2 text-[13px];
+  }
+  .fc .fc-daygrid-day-frame {
+    min-height: 5.5rem;
+  }
+  .fc .fc-list-event td {
+    @apply py-2.5 text-[13.5px];
+  }
+}
+
+/* Barre de défilement discrète */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+}

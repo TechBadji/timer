@@ -124,5 +124,42 @@ assert.equal(sauvegarde.tables.ecoles.length, 6)
 assert.ok(sauvegarde.tables.seances.length > 0)
 console.log('✓ export de sauvegarde JSON')
 
+/* ---- Transfert vers une autre installation : export puis restauration ---- */
+{
+  const { exporterJSON: exporter2, importerSauvegarde } = await import(`${R}/lib/backup.js`)
+
+  const avant = {
+    ecoles: await db.ecoles.toArray(),
+    matieres: await db.matieres.toArray(),
+    tarifs: await db.tarifs.toArray(),
+    seances: await db.seances.toArray(),
+    paiements: await db.paiements.toArray(),
+    reglages: await db.reglages.toArray(),
+  }
+  const fichier = await exporter2()
+
+  // On simule l'appareil de destination : base vidée de bout en bout.
+  await Promise.all([db.ecoles, db.matieres, db.tarifs, db.seances, db.paiements, db.reglages].map((t) => t.clear()))
+  assert.equal(await db.seances.count(), 0)
+
+  // La restauration reçoit un Blob-like, comme l'input fichier du navigateur.
+  const compte = await importerSauvegarde({ text: async () => JSON.stringify(fichier) })
+
+  assert.equal(compte.seances, avant.seances.length)
+  for (const [table, lignes] of Object.entries(avant)) {
+    const apres = await db.table(table).toArray()
+    assert.deepEqual(
+      apres.sort((a, b) => String(a.id ?? a.cle).localeCompare(String(b.id ?? b.cle))),
+      lignes.sort((a, b) => String(a.id ?? a.cle).localeCompare(String(b.id ?? b.cle))),
+      `table ${table} restaurée à l'identique`
+    )
+  }
+
+  // Un fichier étranger doit être refusé plutôt qu'écraser la base.
+  await assert.rejects(() => importerSauvegarde({ text: async () => '{"app":"autre"}' }), /non reconnu/)
+  assert.equal(await db.seances.count(), avant.seances.length, 'la base est intacte après un refus')
+
+  console.log(`✓ transfert : ${compte.seances} séances, ${compte.matieres} matières, ${compte.tarifs} tarifs restaurés à l'identique`)
+}
 console.log('\nToute la couche de persistance fonctionne.')
 process.exit(0)

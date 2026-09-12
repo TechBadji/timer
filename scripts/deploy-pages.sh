@@ -27,6 +27,16 @@ git commit -q -m "build: publication du site Timer (source $REVISION)"
 git remote add origin "$DEPOT"
 
 echo "→ Publication sur gh-pages…"
-git push -f -q origin gh-pages
+# Réseau capricieux : on retente plutôt que d'abandonner une construction valide.
+TENTATIVE=1
+until git push -f -q origin gh-pages; do
+  TENTATIVE=$((TENTATIVE + 1))
+  if [ "$TENTATIVE" -gt 4 ]; then
+    echo "✗ Publication impossible après 4 tentatives (réseau ?). Relancez : npm run deploy" >&2
+    exit 1
+  fi
+  echo "  tentative $TENTATIVE…"
+  sleep 5
+done
 
 echo "✓ En ligne : https://techbadji.github.io/timer/ (propagation : ~1 min)"

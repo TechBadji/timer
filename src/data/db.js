@@ -22,6 +22,13 @@ db.version(1).stores({
   reglages: 'cle',
 })
 
+// v2 : verrou d'accès local (identifiant + mot de passe) et sauvegardes
+// automatiques rotatives, toujours dans IndexedDB — rien ne quitte l'appareil.
+db.version(2).stores({
+  comptes: '++id, identifiant',
+  sauvegardes: '++id, date',
+})
+
 /** Amorçage : les 6 écoles + les réglages par défaut, une seule fois. */
 db.on('populate', async (tx) => {
   await tx.table('ecoles').bulkAdd(ECOLES_PAR_DEFAUT)

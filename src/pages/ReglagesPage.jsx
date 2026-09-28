@@ -2,11 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { NIVEAUX } from '../data/constants'
 import { ecrireReglage } from '../data/db'
 import { definirTarif, majEcole } from '../data/repo'
-import { telechargerSauvegarde, importerSauvegarde, viderSeances } from '../lib/backup'
+import {
+  telechargerSauvegarde,
+  importerSauvegarde,
+  viderSeances,
+  listerSauvegardesAuto,
+  restaurerSauvegardeAuto,
+} from '../lib/backup'
 import { demanderPermission, notificationTest, permissionNotifications, notificationsSupportees } from '../lib/notifications'
-import { fcfa } from '../lib/money'
+import { changerMotDePasse, fermerSession, identifiantSession } from '../lib/auth'
 import { Champ, Saisie, Liste, useToast, Confirmation, Bandeau } from '../components/ui'
-import { IconeCloche, IconeTelecharger, IconeCheck } from '../components/icons'
+import { IconeCloche, IconeTelecharger, IconeCheck, IconeArchive } from '../components/icons'
 
 export default function ReglagesPage({ referentiel, seances }) {
   const { ecoles, matieres, reglages, tauxParCle } = referentiel
@@ -15,6 +21,12 @@ export default function ReglagesPage({ referentiel, seances }) {
   const [permission, setPermission] = useState(permissionNotifications())
   const [invite, setInvite] = useState(null) // événement beforeinstallprompt
   const fichierRef = useRef(null)
+  const [sauvegardesAuto, setSauvegardesAuto] = useState([])
+
+  const rafraichirSauvegardesAuto = () => listerSauvegardesAuto().then(setSauvegardesAuto)
+  useEffect(() => {
+    rafraichirSauvegardesAuto()
+  }, [])
 
   useEffect(() => {
     const surInvite = (e) => {
@@ -27,6 +39,7 @@ export default function ReglagesPage({ referentiel, seances }) {
 
   const majReglage = async (cle, valeur) => {
     await ecrireReglage(cle, valeur)
+    toast('Enregistrement effectué avec succès')
   }
 
   return (
@@ -66,7 +79,7 @@ export default function ReglagesPage({ referentiel, seances }) {
                           valeur={tauxParCle.get(`${e.id}|${n}`) ?? ''}
                           onValider={async (v) => {
                             await definirTarif(e.id, n, v)
-                            toast(`${e.code} · ${n} : ${fcfa(v)}/h`)
+                            toast('Enregistrement effectué avec succès')
                           }}
                         />
                       </td>
@@ -90,14 +103,20 @@ export default function ReglagesPage({ referentiel, seances }) {
                 <input
                   type="color"
                   value={e.couleur}
-                  onChange={(ev) => majEcole(e.id, { couleur: ev.target.value })}
+                  onChange={async (ev) => {
+                    await majEcole(e.id, { couleur: ev.target.value })
+                    toast('Enregistrement effectué avec succès')
+                  }}
                   className="h-9 w-9 shrink-0 cursor-pointer rounded-lg border border-ink-200 bg-white p-0.5"
                   aria-label={`Couleur ${e.code}`}
                 />
                 <span className="w-24 shrink-0 text-[13px] font-bold text-ink-800">{e.code}</span>
                 <SaisieSynchro
                   valeur={e.nom}
-                  onCommit={(v) => majEcole(e.id, { nom: v })}
+                  onCommit={async (v) => {
+                    await majEcole(e.id, { nom: v })
+                    toast('Enregistrement effectué avec succès')
+                  }}
                   className="flex-1 py-1.5 text-[13px]"
                 />
               </li>
@@ -193,6 +212,31 @@ export default function ReglagesPage({ referentiel, seances }) {
           </Section>
         )}
 
+        {/* Sécurité */}
+        <Section titre="Sécurité" sousTitre="Verrou d'accès local à cet appareil">
+          <p className="text-[13px] text-ink-600">
+            Connecté en tant que <span className="font-semibold text-ink-800">{identifiantSession() || '—'}</span>
+          </p>
+          <FormulaireMotDePasse toast={toast} />
+          <button
+            className="btn-secondaire mt-3 w-full"
+            onClick={() =>
+              setConfirmation({
+                titre: 'Se déconnecter ?',
+                texte: 'Vous devrez ressaisir votre mot de passe pour rouvrir l’application sur cet appareil.',
+                confirmer: 'Se déconnecter',
+                danger: true,
+                onConfirmer: () => {
+                  fermerSession()
+                  window.location.reload()
+                },
+              })
+            }
+          >
+            Se déconnecter
+          </button>
+        </Section>
+
         {/* Données */}
         <Section titre="Données" sousTitre="Sauvegarde locale — aucune donnée ne quitte l'appareil">
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -226,6 +270,7 @@ export default function ReglagesPage({ referentiel, seances }) {
                     try {
                       const n = await importerSauvegarde(f)
                       toast(`Restauré : ${n.seances} séances, ${n.matieres} matières`)
+                      rafraichirSauvegardesAuto()
                     } catch (err) {
                       toast(err.message || 'Fichier illisible', 'erreur')
                     }
@@ -251,6 +296,44 @@ export default function ReglagesPage({ referentiel, seances }) {
           >
             Effacer toutes les séances
           </button>
+
+          {sauvegardesAuto.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-ink-500">
+                <IconeArchive size={14} /> Instantanés automatiques (quotidiens, sur cet appareil)
+              </p>
+              <ul className="divide-y divide-ink-100 overflow-hidden rounded-xl border border-ink-200">
+                {sauvegardesAuto.map((s) => (
+                  <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                    <span className="text-[12.5px] text-ink-600">
+                      {new Date(s.date).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })}
+                    </span>
+                    <button
+                      className="btn-secondaire px-2.5 py-1 text-[12px]"
+                      onClick={() =>
+                        setConfirmation({
+                          titre: 'Restaurer cet instantané ?',
+                          texte: 'Toutes les données actuelles seront remplacées par celles de cet instantané.',
+                          confirmer: 'Restaurer',
+                          danger: true,
+                          onConfirmer: async () => {
+                            try {
+                              await restaurerSauvegardeAuto(s.id)
+                              toast('Instantané restauré')
+                            } catch (err) {
+                              toast(err.message || 'Erreur', 'erreur')
+                            }
+                          },
+                        })
+                      }
+                    >
+                      Restaurer
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Section>
 
         <p className="px-1 pb-2 text-center text-[11.5px] leading-relaxed text-ink-400">
@@ -309,6 +392,66 @@ function CelluleTarif({ valeur, onValider }) {
       placeholder="—"
       className="w-full rounded-lg border border-ink-200 px-2 py-1.5 text-right text-[13px] tabular outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10"
     />
+  )
+}
+
+function FormulaireMotDePasse({ toast }) {
+  const [ouvert, setOuvert] = useState(false)
+  const [actuel, setActuel] = useState('')
+  const [nouveau, setNouveau] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [erreur, setErreur] = useState('')
+  const [enCours, setEnCours] = useState(false)
+
+  if (!ouvert) {
+    return (
+      <button className="btn-secondaire mt-3 w-full" onClick={() => setOuvert(true)}>
+        Changer le mot de passe
+      </button>
+    )
+  }
+
+  const valider = async (e) => {
+    e.preventDefault()
+    setErreur('')
+    if (nouveau.length < 4) return setErreur('Le nouveau mot de passe doit contenir au moins 4 caractères')
+    if (nouveau !== confirmation) return setErreur('Les mots de passe ne correspondent pas')
+    setEnCours(true)
+    try {
+      await changerMotDePasse(actuel, nouveau)
+      toast('Mot de passe modifié')
+      setOuvert(false)
+      setActuel('')
+      setNouveau('')
+      setConfirmation('')
+    } catch (err) {
+      setErreur(err.message || 'Erreur')
+    } finally {
+      setEnCours(false)
+    }
+  }
+
+  return (
+    <form onSubmit={valider} className="mt-3 space-y-2.5 rounded-xl border border-ink-200 p-3">
+      <Champ label="Mot de passe actuel">
+        <Saisie type="password" value={actuel} onChange={(e) => setActuel(e.target.value)} autoComplete="current-password" />
+      </Champ>
+      <Champ label="Nouveau mot de passe">
+        <Saisie type="password" value={nouveau} onChange={(e) => setNouveau(e.target.value)} autoComplete="new-password" />
+      </Champ>
+      <Champ label="Confirmer">
+        <Saisie type="password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} autoComplete="new-password" />
+      </Champ>
+      {erreur && <Bandeau ton="erreur">{erreur}</Bandeau>}
+      <div className="flex gap-2">
+        <button type="button" className="btn-secondaire flex-1" onClick={() => setOuvert(false)}>
+          Annuler
+        </button>
+        <button type="submit" disabled={enCours} className="btn-primaire flex-1 disabled:opacity-60">
+          Valider
+        </button>
+      </div>
+    </form>
   )
 }
 

@@ -12,9 +12,10 @@ import { heuresDe } from '../lib/stats'
 import { deplacerSeance, dupliquerSemaine, marquerFait } from '../data/repo'
 import { Modale, Saisie, Champ, Vide, Puce, useToast, Bandeau } from '../components/ui'
 import {
-  IconePlus, IconeChevronGauche, IconeChevronDroite, IconeCopie, IconePartage, IconeCalendrier, IconeCheck,
+  IconePlus, IconeMicro, IconeChevronGauche, IconeChevronDroite, IconeCopie, IconePartage, IconeCalendrier, IconeCheck,
 } from '../components/icons'
 import SeanceForm from '../components/SeanceForm'
+import { reconnaissanceDisponible } from '../lib/voix'
 
 const VUES = [
   { valeur: 'timeGridDay', label: 'Jour' },
@@ -96,8 +97,9 @@ export default function CalendrierPage({ params, referentiel, seances }) {
   const heuresPlage = seancesDeLaPlage.reduce((t, s) => t + heuresDe(s), 0)
   const nbConflits = seancesDeLaPlage.filter((s) => conflits.has(s.id)).length
 
-  const nouveauCours = () =>
-    setForm({ defauts: { date: plage.debut <= aujourdhui() && aujourdhui() <= plage.fin ? aujourdhui() : plage.debut } })
+  const nouveauCours = (dicter = false) =>
+    setForm({ dicter, defauts: { date: plage.debut <= aujourdhui() && aujourdhui() <= plage.fin ? aujourdhui() : plage.debut } })
+  const vocal = reconnaissanceDisponible()
 
   async function exporter() {
     if (!seancesDeLaPlage.length) return toast('Aucune séance à exporter sur cette période', 'erreur')
@@ -146,7 +148,12 @@ export default function CalendrierPage({ params, referentiel, seances }) {
         </button>
         {/* Sur ordinateur, la création passe par un bouton d'en-tête plutôt que par
             le bouton flottant, qui recouvrirait la carte « prochain cours ». */}
-        <button className="btn-primaire hidden px-3.5 py-2 lg:inline-flex" onClick={nouveauCours}>
+        {vocal && (
+          <button className="btn-secondaire hidden px-3.5 py-2 lg:inline-flex" onClick={() => nouveauCours(true)}>
+            <IconeMicro size={18} /> Dicter la séance
+          </button>
+        )}
+        <button className="btn-primaire hidden px-3.5 py-2 lg:inline-flex" onClick={() => nouveauCours()}>
           <IconePlus size={18} /> Ajouter un cours
         </button>
       </div>
@@ -247,9 +254,18 @@ export default function CalendrierPage({ params, referentiel, seances }) {
       <ProchaineSeance seances={seances} referentiel={referentiel} onOuvrir={(s) => setForm({ seance: s })} />
 
 
-      {/* Bouton flottant */}
+      {/* Boutons flottants */}
+      {vocal && (
+        <button
+          onClick={() => nouveauCours(true)}
+          className="fixed bottom-[calc(9rem+var(--safe-bottom))] right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-white text-brand-700 shadow-pop ring-1 ring-ink-200 transition active:scale-95 lg:hidden"
+          aria-label="Dicter la séance"
+        >
+          <IconeMicro size={22} />
+        </button>
+      )}
       <button
-        onClick={nouveauCours}
+        onClick={() => nouveauCours()}
         className="fixed bottom-[calc(4.75rem+var(--safe-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-pop transition active:scale-95 lg:hidden"
         aria-label="Ajouter un cours"
       >
@@ -261,6 +277,7 @@ export default function CalendrierPage({ params, referentiel, seances }) {
         onFermer={() => setForm(null)}
         seance={form?.seance}
         defauts={form?.defauts}
+        dicterAuto={!!form?.dicter}
         referentiel={referentiel}
         seances={seances}
       />
@@ -312,6 +329,7 @@ function Evenement({ arg }) {
         <span className="text-ink-500">
           {ecole?.code} · {enLigne ? 'en ligne' : seance.lieu || 'présentiel'}
         </span>
+        {seance.notes && <span className="italic text-ink-600">— {seance.notes}</span>}
         {conflit && <span className="font-semibold text-rose-600">conflit</span>}
       </span>
     )
@@ -319,7 +337,7 @@ function Evenement({ arg }) {
 
   if (mois) {
     return (
-      <div className={`flex w-full items-center gap-1 overflow-hidden px-1 py-px ${annule ? 'opacity-40 line-through' : ''}`}>
+      <div title={seance.notes || undefined} className={`flex w-full items-center gap-1 overflow-hidden px-1 py-px ${annule ? 'opacity-40 line-through' : ''}`}>
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: couleur }} />
         <span className="truncate text-[10.5px] font-medium text-ink-700 lg:text-[12px]">
           {arg.timeText} {matiere?.nom}
@@ -345,6 +363,7 @@ function Evenement({ arg }) {
       <p className="truncate text-[10px] leading-tight opacity-85 lg:text-[11px]">
         {ecole?.code} · {enLigne ? 'visio' : seance.lieu || 'présentiel'}
       </p>
+      {seance.notes && <p className="line-clamp-3 text-[10px] italic leading-tight opacity-90 lg:text-[11px]">{seance.notes}</p>}
     </div>
   )
 }

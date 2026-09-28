@@ -6,12 +6,13 @@ import { dureeHeures, enHeure, enMinutes, formatDuree, jourLabel } from '../lib/
 import { fcfa } from '../lib/money'
 import { progression } from '../lib/stats'
 import { Modale, Champ, Saisie, Liste, Segments, Zone, Bandeau, Puce, useToast } from './ui'
-import { IconePoubelle } from './icons'
+import { IconePoubelle, IconeMicro } from './icons'
+import { analyserSeance, ecouter, reconnaissanceDisponible } from '../lib/voix'
 import MatiereForm from './MatiereForm'
 
 const DUREES = [1, 1.5, 2, 3, 4]
 
-export default function SeanceForm({ ouvert, onFermer, seance, defauts, referentiel, seances, onSupprimee }) {
+export default function SeanceForm({ ouvert, onFermer, seance, defauts, referentiel, seances, onSupprimee, dicterAuto }) {
   const { ecoles, matieres, ecolesById, matieresById, tauxParCle, reglages } = referentiel
   const toast = useToast()
   const [f, setF] = useState({})
@@ -20,6 +21,8 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
   const [nbSemaines, setNbSemaines] = useState(11)
   const [formMatiere, setFormMatiere] = useState(false)
   const [confirmerSuppr, setConfirmerSuppr] = useState(false)
+  const [ecoute, setEcoute] = useState(false)
+  const [retourVoix, setRetourVoix] = useState(null) // { texte, comprises } | { erreur }
 
   const matieresActives = useMemo(
     () => matieres.filter((m) => m.statut !== 'terminee' || m.id === seance?.matiereId),
@@ -87,6 +90,41 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
       return suivant
     })
 
+  async function dicter() {
+    setRetourVoix(null)
+    setEcoute(true)
+    try {
+      const texte = await ecouter()
+      const { champs, comprises } = analyserSeance(texte, { matieres: matieresActives, ecoles })
+      if (!comprises.length) {
+        setRetourVoix({ texte, erreur: 'Rien de reconnu. Dites par exemple : « Réseaux ISM Ingénierie lundi de 8h à 12h salle B2 ».' })
+        return
+      }
+      setF((p) => {
+        const m = champs.matiereId ? matieresById.get(champs.matiereId) : null
+        const suivant = { ...p, ...champs }
+        if (m) {
+          suivant.mode = champs.mode || m.modeParDefaut || 'presentiel'
+          suivant.lieu = champs.lieu ?? m.lieuParDefaut ?? ''
+          suivant.lien = m.lienParDefaut || ''
+        }
+        if (champs.debut && !champs.fin) suivant.fin = enHeure(enMinutes(champs.debut) + 120)
+        return suivant
+      })
+      setRetourVoix({ texte, comprises })
+    } catch (err) {
+      setRetourVoix({ erreur: err.message })
+    } finally {
+      setEcoute(false)
+    }
+  }
+
+  // Ouvert depuis le bouton « Dicter la séance » du calendrier : l'écoute démarre aussitôt.
+  useEffect(() => {
+    if (ouvert && dicterAuto && !seance) dicter()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ouvert, dicterAuto])
+
   const appliquerDuree = (h) => setF((p) => ({ ...p, fin: enHeure(enMinutes(p.debut) + h * 60) }))
 
   async function enregistrer() {
@@ -109,10 +147,10 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
         statut: f.statut,
         notes: f.notes,
       })
-      toast('Séance mise à jour')
+      toast('Enregistrement effectué avec succès')
     } else {
       const ids = await creerSeance(f, { repetitions: repeter ? Number(nbSemaines) : 0 })
-      toast(repeter ? `${ids.length} séances créées` : 'Séance ajoutée')
+      toast('Enregistrement effectué avec succès')
     }
     onFermer()
   }
@@ -168,6 +206,26 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
                 Annuler
               </button>
             </div>
+          </div>
+        )}
+
+        {!seance && reconnaissanceDisponible() && (
+          <div className="mb-4">
+            <button type="button" onClick={dicter} disabled={ecoute} className="btn-secondaire w-full">
+              <IconeMicro size={18} className={ecoute ? 'text-marge' : ''} />
+              {ecoute ? 'Je vous écoute…' : 'Dicter la séance'}
+            </button>
+            {retourVoix?.erreur ? (
+              <div className="mt-2">
+                <Bandeau ton="alerte">{retourVoix.erreur}</Bandeau>
+              </div>
+            ) : (
+              retourVoix && (
+                <p className="mt-2 text-[12.5px] leading-relaxed text-ink-500">
+                  « {retourVoix.texte} » — reconnu : {retourVoix.comprises.join(', ')}. Vérifiez puis enregistrez.
+                </p>
+              )
+            )}
           </div>
         )}
 

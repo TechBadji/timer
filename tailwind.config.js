@@ -4,21 +4,23 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Inter var"', 'Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: ['Figtree', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+        display: ['"Bricolage Grotesque"', 'Figtree', 'system-ui', 'sans-serif'],
       },
       colors: {
         ink: {
-          50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8',
-          500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a',
+          50: '#f6f7fb', 100: '#eceef6', 200: '#dde1ee', 300: '#c3c9dc', 400: '#8f98b5',
+          500: '#616b8c', 600: '#465072', 700: '#2f3858', 800: '#1d2543', 900: '#131a33',
         },
         brand: {
-          50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8',
-          500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81',
+          50: '#eef1ff', 100: '#dde3ff', 200: '#bfc9ff', 300: '#93a2f5', 400: '#5f74e0',
+          500: '#3f55cc', 600: '#2c3fb0', 700: '#233291', 800: '#1d2873', 900: '#171f59',
         },
+        marge: '#e2456f',
       },
       boxShadow: {
-        card: '0 1px 2px rgba(15,23,42,.06), 0 8px 24px -12px rgba(15,23,42,.18)',
-        pop: '0 12px 40px -12px rgba(15,23,42,.35)',
+        card: '0 1px 0 rgba(19,26,51,.04), 0 0 0 1px rgba(19,26,51,.07)',
+        pop: '0 16px 48px -16px rgba(19,26,51,.45)',
       },
       keyframes: {
         'slide-up': { '0%': { transform: 'translateY(12px)', opacity: 0 }, '100%': { transform: 'translateY(0)', opacity: 1 } },

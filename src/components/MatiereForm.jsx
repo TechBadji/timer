@@ -42,11 +42,11 @@ export default function MatiereForm({ ouvert, onFermer, matiere, ecoles, tauxPar
         lienParDefaut: f.lienParDefaut,
         note: f.note,
       })
-      toast('Matière mise à jour')
+      toast('Enregistrement effectué avec succès')
       onEnregistre?.(matiere.id)
     } else {
       const id = await creerMatiere(f)
-      toast('Matière créée')
+      toast('Enregistrement effectué avec succès')
       onEnregistre?.(id)
     }
     onFermer()

@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "icons": "node scripts/gen-icons.mjs",
-    "test": "node --import ./tests/register.mjs tests/logique.test.mjs && node --import ./tests/register.mjs tests/persistance.test.mjs",
+    "test": "node --import ./tests/register.mjs tests/logique.test.mjs && node --import ./tests/register.mjs tests/persistance.test.mjs && node --import ./tests/register.mjs tests/auth.test.mjs && node --import ./tests/register.mjs tests/voix.test.mjs",
     "deploy": "sh scripts/deploy-pages.sh"
   },
   "dependencies": {

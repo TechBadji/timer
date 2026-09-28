@@ -1,73 +1,53 @@
-// Verrou d'accès local : un seul compte (identifiant + mot de passe), hachage
-// PBKDF2-SHA256 salé via Web Crypto. Aucun serveur : c'est un verrou d'écran
-// pour éviter qu'une personne qui prend l'appareil en main ouvre l'app, pas une
-// authentification réseau. La session est mémorisée 30 jours dans localStorage.
-import { db } from '../data/db'
+// Authentification Supabase — un compte email + mot de passe par enseignant,
+// valable sur tous ses appareils. Le mot de passe n'est jamais géré par le code
+// applicatif : Supabase le hache et le vérifie côté serveur.
+import { supabase } from '../data/supabase'
 
-const ITERATIONS = 150000
-const CLE_SESSION = 'timer.session'
-const DUREE_SESSION_MS = 30 * 24 * 60 * 60 * 1000
-
-const versHex = (buf) => Array.from(new Uint8Array(buf)).map((o) => o.toString(16).padStart(2, '0')).join('')
-const depuisHex = (hex) => {
-  const octets = new Uint8Array(hex.length / 2)
-  for (let i = 0; i < octets.length; i++) octets[i] = parseInt(hex.substr(i * 2, 2), 16)
-  return octets
+export async function creerCompte(email, motDePasse) {
+  const { error } = await supabase.auth.signUp({ email: email.trim(), password: motDePasse })
+  if (error) throw new Error(traduire(error))
 }
 
-async function derivHachage(motDePasse, selOctets) {
-  const materiau = await crypto.subtle.importKey('raw', new TextEncoder().encode(motDePasse), 'PBKDF2', false, ['deriveBits'])
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: selOctets, iterations: ITERATIONS, hash: 'SHA-256' }, materiau, 256)
-  return versHex(bits)
+export async function connecter(email, motDePasse) {
+  const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: motDePasse })
+  if (error) throw new Error(traduire(error))
 }
 
-export async function compteExiste() {
-  return (await db.comptes.count()) > 0
+export async function fermerSession() {
+  await supabase.auth.signOut()
 }
 
-export async function creerCompte(identifiant, motDePasse) {
-  const sel = crypto.getRandomValues(new Uint8Array(16))
-  const hachage = await derivHachage(motDePasse, sel)
-  await db.comptes.clear()
-  await db.comptes.add({ identifiant: identifiant.trim(), sel: versHex(sel), hachage })
+export async function sessionActuelle() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  return session
 }
 
-export async function verifierIdentifiants(identifiant, motDePasse) {
-  const compte = await db.comptes.toCollection().first()
-  if (!compte || compte.identifiant.toLowerCase() !== identifiant.trim().toLowerCase()) return false
-  return (await derivHachage(motDePasse, depuisHex(compte.sel))) === compte.hachage
+export function onChangementSession(callback) {
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_evenement, session) => callback(session))
+  return () => subscription.unsubscribe()
 }
 
 export async function changerMotDePasse(motDePasseActuel, nouveauMotDePasse) {
-  const compte = await db.comptes.toCollection().first()
-  if (!compte) throw new Error('Aucun compte configuré')
-  if (!(await verifierIdentifiants(compte.identifiant, motDePasseActuel))) throw new Error('Mot de passe actuel incorrect')
-  const sel = crypto.getRandomValues(new Uint8Array(16))
-  const hachage = await derivHachage(nouveauMotDePasse, sel)
-  await db.comptes.update(compte.id, { sel: versHex(sel), hachage })
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error('Non connecté')
+  const { error: e1 } = await supabase.auth.signInWithPassword({ email: user.email, password: motDePasseActuel })
+  if (e1) throw new Error('Mot de passe actuel incorrect')
+  const { error } = await supabase.auth.updateUser({ password: nouveauMotDePasse })
+  if (error) throw new Error(traduire(error))
 }
 
-export function ouvrirSession(identifiant) {
-  localStorage.setItem(CLE_SESSION, JSON.stringify({ identifiant, expire: Date.now() + DUREE_SESSION_MS }))
-}
-
-export function sessionValide() {
-  try {
-    const { expire } = JSON.parse(localStorage.getItem(CLE_SESSION) || 'null') || {}
-    return typeof expire === 'number' && Date.now() < expire
-  } catch {
-    return false
-  }
-}
-
-export function identifiantSession() {
-  try {
-    return JSON.parse(localStorage.getItem(CLE_SESSION) || 'null')?.identifiant || null
-  } catch {
-    return null
-  }
-}
-
-export function fermerSession() {
-  localStorage.removeItem(CLE_SESSION)
+function traduire(error) {
+  const m = error.message || ''
+  if (/already registered/i.test(m)) return 'Un compte existe déjà avec cet email'
+  if (/invalid login credentials/i.test(m)) return 'Email ou mot de passe incorrect'
+  if (/password.*(least|character)/i.test(m)) return 'Le mot de passe doit contenir au moins 6 caractères'
+  if (/invalid email/i.test(m)) return 'Adresse email invalide'
+  if (/email not confirmed/i.test(m)) return 'Confirmez votre email avant de vous connecter (lien envoyé par Supabase)'
+  return m || 'Erreur inattendue'
 }

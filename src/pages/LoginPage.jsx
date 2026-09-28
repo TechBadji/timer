@@ -1,50 +1,41 @@
 import { useState } from 'react'
-import { compteExiste, creerCompte, verifierIdentifiants, ouvrirSession } from '../lib/auth'
+import { creerCompte, connecter } from '../lib/auth'
 import { Champ, Saisie, Bandeau } from '../components/ui'
 import { IconeCheck } from '../components/icons'
 
-export default function LoginPage({ premierAcces, onConnecte }) {
-  const [identifiant, setIdentifiant] = useState('')
+export default function LoginPage({ onConnecte }) {
+  const [inscription, setInscription] = useState(false)
+  const [email, setEmail] = useState('')
   const [motDePasse, setMotDePasse] = useState('')
-  const [confirmation, setConfirmation] = useState('')
   const [erreur, setErreur] = useState('')
+  const [info, setInfo] = useState('')
   const [enCours, setEnCours] = useState(false)
 
   const valider = async (e) => {
     e.preventDefault()
     setErreur('')
-    if (!identifiant.trim() || !motDePasse) {
-      setErreur('Identifiant et mot de passe requis')
+    setInfo('')
+    if (!email.trim() || !motDePasse) {
+      setErreur('Email et mot de passe requis')
       return
     }
-    if (premierAcces) {
-      if (motDePasse.length < 4) {
-        setErreur('Le mot de passe doit contenir au moins 4 caractères')
-        return
-      }
-      if (motDePasse !== confirmation) {
-        setErreur('Les mots de passe ne correspondent pas')
-        return
-      }
+    if (inscription && motDePasse.length < 6) {
+      setErreur('Le mot de passe doit contenir au moins 6 caractères')
+      return
     }
     setEnCours(true)
     try {
-      if (premierAcces) {
-        await creerCompte(identifiant, motDePasse)
-        ouvrirSession(identifiant.trim())
-        onConnecte()
+      if (inscription) {
+        await creerCompte(email, motDePasse)
+        setInfo('Compte créé. Si une confirmation par email est demandée, cliquez sur le lien reçu puis connectez-vous.')
+        setInscription(false)
       } else {
-        const ok = await verifierIdentifiants(identifiant, motDePasse)
-        if (!ok) {
-          setErreur('Identifiant ou mot de passe incorrect')
-          setEnCours(false)
-          return
-        }
-        ouvrirSession(identifiant.trim())
+        await connecter(email, motDePasse)
         onConnecte()
       }
     } catch (err) {
       setErreur(err.message || 'Erreur inattendue')
+    } finally {
       setEnCours(false)
     }
   }
@@ -55,48 +46,51 @@ export default function LoginPage({ premierAcces, onConnecte }) {
         <div className="mb-6 flex flex-col items-center text-center">
           <h1 className="font-display text-[56px] font-extrabold leading-none text-ink-900">Timer</h1>
           <p className="mt-2 text-[14px] text-ink-500">
-            {premierAcces ? 'Choisissez un identifiant et un mot de passe pour protéger votre carnet.' : 'Ouvrez votre carnet de cours.'}
+            {inscription ? 'Créez votre compte pour accéder à votre carnet sur tous vos appareils.' : 'Ouvrez votre carnet de cours.'}
           </p>
         </div>
 
         <form onSubmit={valider} className="carte space-y-3 p-4">
-          <Champ label="Identifiant">
+          <Champ label="Email">
             <Saisie
               autoFocus
-              value={identifiant}
-              onChange={(e) => setIdentifiant(e.target.value)}
-              placeholder="ex : elias"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="prenom.nom@exemple.com"
               autoComplete="username"
             />
           </Champ>
-          <Champ label="Mot de passe">
+          <Champ label="Mot de passe" aide={inscription ? 'Au moins 6 caractères' : undefined}>
             <Saisie
               type="password"
               value={motDePasse}
               onChange={(e) => setMotDePasse(e.target.value)}
-              autoComplete={premierAcces ? 'new-password' : 'current-password'}
+              autoComplete={inscription ? 'new-password' : 'current-password'}
             />
           </Champ>
-          {premierAcces && (
-            <Champ label="Confirmer le mot de passe">
-              <Saisie
-                type="password"
-                value={confirmation}
-                onChange={(e) => setConfirmation(e.target.value)}
-                autoComplete="new-password"
-              />
-            </Champ>
-          )}
 
           {erreur && <Bandeau ton="erreur">{erreur}</Bandeau>}
+          {info && <Bandeau ton="succes">{info}</Bandeau>}
 
           <button type="submit" disabled={enCours} className="btn-primaire w-full disabled:opacity-60">
-            <IconeCheck size={16} /> {premierAcces ? 'Créer mon accès' : 'Se connecter'}
+            <IconeCheck size={16} /> {inscription ? 'Créer mon compte' : 'Se connecter'}
           </button>
         </form>
 
+        <button
+          className="mt-3 w-full text-center text-[13px] font-semibold text-brand-600"
+          onClick={() => {
+            setInscription((v) => !v)
+            setErreur('')
+            setInfo('')
+          }}
+        >
+          {inscription ? 'J’ai déjà un compte — me connecter' : 'Pas encore de compte — en créer un'}
+        </button>
+
         <p className="mt-4 text-center text-[11.5px] leading-relaxed text-ink-400">
-          Vos données restent sur cet appareil.
+          Vos données sont stockées sur votre base Supabase, accessibles depuis tous vos appareils.
         </p>
       </div>
     </div>

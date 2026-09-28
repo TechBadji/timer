@@ -1,16 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { NIVEAUX } from '../data/constants'
-import { ecrireReglage } from '../data/db'
+import { ecrireReglage, supabase } from '../data/supabase'
 import { definirTarif, majEcole } from '../data/repo'
-import {
-  telechargerSauvegarde,
-  importerSauvegarde,
-  viderSeances,
-  listerSauvegardesAuto,
-  restaurerSauvegardeAuto,
-} from '../lib/backup'
+import { telechargerSauvegarde, importerSauvegarde, viderSeances } from '../lib/backup'
+import { baseLocaleDisponible, migrerDepuisIndexedDB } from '../lib/migrationLocale'
 import { demanderPermission, notificationTest, permissionNotifications, notificationsSupportees } from '../lib/notifications'
-import { changerMotDePasse, fermerSession, identifiantSession } from '../lib/auth'
+import { changerMotDePasse, fermerSession } from '../lib/auth'
 import { Champ, Saisie, Liste, useToast, Confirmation, Bandeau } from '../components/ui'
 import { IconeCloche, IconeTelecharger, IconeCheck, IconeArchive } from '../components/icons'
 
@@ -21,11 +16,16 @@ export default function ReglagesPage({ referentiel, seances }) {
   const [permission, setPermission] = useState(permissionNotifications())
   const [invite, setInvite] = useState(null) // événement beforeinstallprompt
   const fichierRef = useRef(null)
-  const [sauvegardesAuto, setSauvegardesAuto] = useState([])
+  const [email, setEmail] = useState('')
+  const [ancienneBase, setAncienneBase] = useState(false)
+  const [migrationEnCours, setMigrationEnCours] = useState(false)
 
-  const rafraichirSauvegardesAuto = () => listerSauvegardesAuto().then(setSauvegardesAuto)
   useEffect(() => {
-    rafraichirSauvegardesAuto()
+    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || ''))
+  }, [])
+
+  useEffect(() => {
+    baseLocaleDisponible().then(setAncienneBase)
   }, [])
 
   useEffect(() => {
@@ -46,10 +46,45 @@ export default function ReglagesPage({ referentiel, seances }) {
     <div className="px-4 pt-[calc(1rem+var(--safe-top))]">
       <h1 className="text-[22px] font-bold leading-tight text-ink-900">Réglages</h1>
       <p className="mb-4 text-[12.5px] text-ink-500">
-        {ecoles.length} écoles · {matieres.length} matières · {seances.length} séances — tout est stocké sur cet appareil
+        {ecoles.length} écoles · {matieres.length} matières · {seances.length} séances — synchronisé sur tous vos appareils
       </p>
 
       <div className="space-y-4 pb-4">
+        {ancienneBase && (
+          <Section titre="Anciennes données trouvées sur cet appareil" sousTitre="Version locale précédente (hors ligne)">
+            <Bandeau ton="info">
+              Ce navigateur contient encore les écoles, matières et séances saisies avant le passage au compte en ligne.
+              Importez-les maintenant : elles remplaceront ce qui est déjà sur ce compte.
+            </Bandeau>
+            <button
+              className="btn-primaire mt-3 w-full disabled:opacity-60"
+              disabled={migrationEnCours}
+              onClick={() =>
+                setConfirmation({
+                  titre: 'Importer les anciennes données ?',
+                  texte: 'Les écoles, matières, tarifs, séances, paiements et réglages actuels de ce compte seront remplacés par ceux enregistrés localement sur cet appareil.',
+                  confirmer: 'Importer',
+                  danger: true,
+                  onConfirmer: async () => {
+                    setMigrationEnCours(true)
+                    try {
+                      const n = await migrerDepuisIndexedDB()
+                      toast(`Importé : ${n.ecoles} écoles, ${n.matieres} matières, ${n.seances} séances`)
+                      setAncienneBase(false)
+                    } catch (err) {
+                      toast(err.message || 'Import impossible', 'erreur')
+                    } finally {
+                      setMigrationEnCours(false)
+                    }
+                  },
+                })
+              }
+            >
+              <IconeArchive size={18} /> {migrationEnCours ? 'Import en cours…' : 'Importer les anciennes données'}
+            </button>
+          </Section>
+        )}
+
         {/* Grille tarifaire */}
         <Section titre="Grille tarifaire" sousTitre="Taux horaire en FCFA par école et par niveau">
           <div className="overflow-hidden rounded-xl border border-ink-200">
@@ -213,9 +248,9 @@ export default function ReglagesPage({ referentiel, seances }) {
         )}
 
         {/* Sécurité */}
-        <Section titre="Sécurité" sousTitre="Verrou d'accès local à cet appareil">
+        <Section titre="Sécurité" sousTitre="Compte Supabase, valable sur tous vos appareils">
           <p className="text-[13px] text-ink-600">
-            Connecté en tant que <span className="font-semibold text-ink-800">{identifiantSession() || '—'}</span>
+            Connecté en tant que <span className="font-semibold text-ink-800">{email || '—'}</span>
           </p>
           <FormulaireMotDePasse toast={toast} />
           <button
@@ -223,11 +258,11 @@ export default function ReglagesPage({ referentiel, seances }) {
             onClick={() =>
               setConfirmation({
                 titre: 'Se déconnecter ?',
-                texte: 'Vous devrez ressaisir votre mot de passe pour rouvrir l’application sur cet appareil.',
+                texte: 'Vous devrez ressaisir votre mot de passe pour rouvrir l’application sur cet appareil. Vos données restent sur le serveur.',
                 confirmer: 'Se déconnecter',
                 danger: true,
-                onConfirmer: () => {
-                  fermerSession()
+                onConfirmer: async () => {
+                  await fermerSession()
                   window.location.reload()
                 },
               })
@@ -238,7 +273,7 @@ export default function ReglagesPage({ referentiel, seances }) {
         </Section>
 
         {/* Données */}
-        <Section titre="Données" sousTitre="Sauvegarde locale — aucune donnée ne quitte l'appareil">
+        <Section titre="Données" sousTitre="Base Supabase — export ponctuel possible en plus">
           <div className="flex flex-col gap-2 sm:flex-row">
             <button
               className="btn-secondaire flex-1"
@@ -270,7 +305,6 @@ export default function ReglagesPage({ referentiel, seances }) {
                     try {
                       const n = await importerSauvegarde(f)
                       toast(`Restauré : ${n.seances} séances, ${n.matieres} matières`)
-                      rafraichirSauvegardesAuto()
                     } catch (err) {
                       toast(err.message || 'Fichier illisible', 'erreur')
                     }
@@ -296,50 +330,12 @@ export default function ReglagesPage({ referentiel, seances }) {
           >
             Effacer toutes les séances
           </button>
-
-          {sauvegardesAuto.length > 0 && (
-            <div className="mt-4">
-              <p className="mb-2 flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-ink-500">
-                <IconeArchive size={14} /> Instantanés automatiques (quotidiens, sur cet appareil)
-              </p>
-              <ul className="divide-y divide-ink-100 overflow-hidden rounded-xl border border-ink-200">
-                {sauvegardesAuto.map((s) => (
-                  <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-2">
-                    <span className="text-[12.5px] text-ink-600">
-                      {new Date(s.date).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })}
-                    </span>
-                    <button
-                      className="btn-secondaire px-2.5 py-1 text-[12px]"
-                      onClick={() =>
-                        setConfirmation({
-                          titre: 'Restaurer cet instantané ?',
-                          texte: 'Toutes les données actuelles seront remplacées par celles de cet instantané.',
-                          confirmer: 'Restaurer',
-                          danger: true,
-                          onConfirmer: async () => {
-                            try {
-                              await restaurerSauvegardeAuto(s.id)
-                              toast('Instantané restauré')
-                            } catch (err) {
-                              toast(err.message || 'Erreur', 'erreur')
-                            }
-                          },
-                        })
-                      }
-                    >
-                      Restaurer
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </Section>
 
         <p className="px-1 pb-2 text-center text-[11.5px] leading-relaxed text-ink-400">
-          Timer · application hors-ligne · fuseau de Dakar (GMT)
+          Timer · fuseau de Dakar (GMT)
           <br />
-          Données stockées dans IndexedDB, sur cet appareil uniquement.
+          Données stockées sur votre base Supabase, accessibles depuis tous vos appareils.
         </p>
       </div>
 
@@ -357,7 +353,7 @@ const Section = ({ titre, sousTitre, children }) => (
 )
 
 /**
- * Champ dont la valeur vient d'IndexedDB (donc résolue après le premier rendu).
+ * Champ dont la valeur vient de Supabase (donc résolue après le premier rendu).
  * On garde une copie locale pour ne pas gêner la saisie, resynchronisée dès que
  * la valeur externe change.
  */
@@ -414,7 +410,7 @@ function FormulaireMotDePasse({ toast }) {
   const valider = async (e) => {
     e.preventDefault()
     setErreur('')
-    if (nouveau.length < 4) return setErreur('Le nouveau mot de passe doit contenir au moins 4 caractères')
+    if (nouveau.length < 6) return setErreur('Le nouveau mot de passe doit contenir au moins 6 caractères')
     if (nouveau !== confirmation) return setErreur('Les mots de passe ne correspondent pas')
     setEnCours(true)
     try {

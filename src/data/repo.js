@@ -1,17 +1,31 @@
 // Écritures métier : tout passe par ici pour garder la base cohérente.
-import { db } from './db'
+// user_id est posé automatiquement par la valeur par défaut RLS (auth.uid())
+// côté Postgres ? non : Postgres ne connaît pas de "default auth.uid()" portable
+// ici, donc on le fournit explicitement à chaque insertion.
+import { supabase, versLigne, versObjets, leverSiErreur } from './supabase'
 import { dureeHeures, decalerSemaines, estPasse } from '../lib/dates'
 
 const nettoyer = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
 
+async function utilisateurId() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error('Non connecté')
+  return user.id
+}
+
 /* ---------------------------------- Écoles --------------------------------- */
 
-export const majEcole = (id, champs) => db.ecoles.update(id, nettoyer(champs))
+export async function majEcole(id, champs) {
+  leverSiErreur(await supabase.from('ecoles').update(versLigne(nettoyer(champs))).eq('id', id))
+}
 
 /* --------------------------------- Matières -------------------------------- */
 
 export async function creerMatiere(m) {
-  return db.matieres.add({
+  const user_id = await utilisateurId()
+  const ligne = versLigne({
     nom: m.nom.trim(),
     ecoleId: Number(m.ecoleId),
     niveau: m.niveau,
@@ -23,33 +37,43 @@ export async function creerMatiere(m) {
     note: m.note || '',
     creeLe: new Date().toISOString(),
   })
+  const data = leverSiErreur(await supabase.from('matieres').insert({ ...ligne, user_id }).select('id').single())
+  return data.id
 }
 
-export const majMatiere = (id, champs) => db.matieres.update(id, nettoyer(champs))
+export async function majMatiere(id, champs) {
+  leverSiErreur(await supabase.from('matieres').update(versLigne(nettoyer(champs))).eq('id', id))
+}
 
-export const changerStatutMatiere = (id, statut) =>
-  db.matieres.update(id, { statut, termineeLe: statut === 'terminee' ? new Date().toISOString() : null })
+export async function changerStatutMatiere(id, statut) {
+  leverSiErreur(
+    await supabase
+      .from('matieres')
+      .update(versLigne({ statut, termineLe: statut === 'terminee' ? new Date().toISOString() : null }))
+      .eq('id', id)
+  )
+}
 
-/** Supprime une matière et toutes ses séances. */
+/** Supprime une matière et toutes ses séances (ON DELETE CASCADE côté base). */
 export async function supprimerMatiere(id) {
-  await db.transaction('rw', db.matieres, db.seances, async () => {
-    await db.seances.where('matiereId').equals(id).delete()
-    await db.matieres.delete(id)
-  })
+  leverSiErreur(await supabase.from('matieres').delete().eq('id', id))
 }
 
 /* ---------------------------------- Tarifs --------------------------------- */
 
 export async function definirTarif(ecoleId, niveau, taux) {
-  const existant = await db.tarifs.where({ ecoleId: Number(ecoleId), niveau }).first()
+  const user_id = await utilisateurId()
   const valeur = Number(taux) || 0
-  if (existant) return db.tarifs.update(existant.id, { taux: valeur })
-  return db.tarifs.add({ ecoleId: Number(ecoleId), niveau, taux: valeur })
+  leverSiErreur(
+    await supabase
+      .from('tarifs')
+      .upsert({ user_id, ecole_id: Number(ecoleId), niveau, taux: valeur }, { onConflict: 'user_id,ecole_id,niveau' })
+  )
 }
 
 export async function tauxPour(ecoleId, niveau) {
-  const t = await db.tarifs.where({ ecoleId: Number(ecoleId), niveau }).first()
-  return t?.taux ?? 0
+  const { data } = await supabase.from('tarifs').select('taux').eq('ecole_id', Number(ecoleId)).eq('niveau', niveau).maybeSingle()
+  return data?.taux ?? 0
 }
 
 /* ---------------------------------- Séances -------------------------------- */
@@ -76,39 +100,52 @@ function normaliserSeance(s, taux) {
  * @returns {Promise<number[]>} les identifiants créés
  */
 export async function creerSeance(saisie, { repetitions = 0, intervalleSemaines = 1 } = {}) {
-  const matiere = await db.matieres.get(Number(saisie.matiereId))
+  const { data: matiere } = await supabase.from('matieres').select('ecole_id, niveau').eq('id', Number(saisie.matiereId)).maybeSingle()
   if (!matiere) throw new Error('Matière introuvable')
-  const taux = await tauxPour(matiere.ecoleId, matiere.niveau)
+  const taux = await tauxPour(matiere.ecole_id, matiere.niveau)
+  const user_id = await utilisateurId()
 
   const serieId = repetitions > 0 ? `s${Date.now()}` : null
   const aCreer = []
   for (let i = 0; i <= repetitions; i++) {
     aCreer.push(
-      normaliserSeance(
-        { ...saisie, date: i === 0 ? saisie.date : decalerSemaines(saisie.date, i * intervalleSemaines), serieId },
-        taux
-      )
+      versLigne({
+        ...normaliserSeance(
+          { ...saisie, date: i === 0 ? saisie.date : decalerSemaines(saisie.date, i * intervalleSemaines), serieId },
+          taux
+        ),
+        user_id,
+      })
     )
   }
-  return db.seances.bulkAdd(aCreer, { allKeys: true })
+  const data = leverSiErreur(await supabase.from('seances').insert(aCreer).select('id'))
+  return data.map((r) => r.id)
 }
 
-export const majSeance = (id, champs) => db.seances.update(id, nettoyer(champs))
+export async function majSeance(id, champs) {
+  leverSiErreur(await supabase.from('seances').update(versLigne(nettoyer(champs))).eq('id', id))
+}
 
-export const supprimerSeance = (id) => db.seances.delete(id)
+export async function supprimerSeance(id) {
+  leverSiErreur(await supabase.from('seances').delete().eq('id', id))
+}
 
 /** Supprime toutes les séances d'une série récurrente à partir d'une date. */
 export async function supprimerSerie(serieId, aPartirDe = null) {
-  const lot = await db.seances.where('serieId').equals(serieId).toArray()
-  const ids = lot.filter((s) => !aPartirDe || s.date >= aPartirDe).map((s) => s.id)
-  await db.seances.bulkDelete(ids)
-  return ids.length
+  let requete = supabase.from('seances').delete().eq('serie_id', serieId)
+  if (aPartirDe) requete = requete.gte('date', aPartirDe)
+  const data = leverSiErreur(await requete.select('id'))
+  return data.length
 }
 
-export const marquerFait = (id) => db.seances.update(id, { statut: 'fait' })
+export async function marquerFait(id) {
+  leverSiErreur(await supabase.from('seances').update({ statut: 'fait' }).eq('id', id))
+}
 
 /** Déplacement depuis le calendrier (drag & drop / redimensionnement). */
-export const deplacerSeance = (id, { date, debut, fin }) => db.seances.update(id, nettoyer({ date, debut, fin }))
+export async function deplacerSeance(id, { date, debut, fin }) {
+  leverSiErreur(await supabase.from('seances').update(versLigne(nettoyer({ date, debut, fin }))).eq('id', id))
+}
 
 /**
  * Duplique toutes les séances d'une semaine sur les N semaines suivantes.
@@ -116,54 +153,64 @@ export const deplacerSeance = (id, { date, debut, fin }) => db.seances.update(id
  */
 export async function dupliquerSemaine(debutSemaineISO, nbSemaines) {
   const fin = decalerSemaines(debutSemaineISO, 1)
-  const source = await db.seances.where('date').between(debutSemaineISO, fin, true, false).toArray()
+  const source = versObjets(
+    leverSiErreur(await supabase.from('seances').select('*').gte('date', debutSemaineISO).lt('date', fin))
+  )
   const actives = source.filter((s) => s.statut !== 'annule')
   if (!actives.length) return 0
 
+  const user_id = await utilisateurId()
   const serieId = `d${Date.now()}`
   const copies = []
   for (let i = 1; i <= nbSemaines; i++) {
     for (const s of actives) {
-      copies.push({
-        matiereId: s.matiereId,
-        date: decalerSemaines(s.date, i),
-        debut: s.debut,
-        fin: s.fin,
-        mode: s.mode,
-        lieu: s.lieu,
-        lien: s.lien,
-        statut: 'planifie',
-        notes: s.notes,
-        tauxHoraire: s.tauxHoraire,
-        serieId,
-      })
+      copies.push(
+        versLigne({
+          matiereId: s.matiereId,
+          date: decalerSemaines(s.date, i),
+          debut: s.debut,
+          fin: s.fin,
+          mode: s.mode,
+          lieu: s.lieu,
+          lien: s.lien,
+          statut: 'planifie',
+          notes: s.notes,
+          tauxHoraire: s.tauxHoraire,
+          serieId,
+          user_id,
+        })
+      )
     }
   }
-  await db.seances.bulkAdd(copies)
+  leverSiErreur(await supabase.from('seances').insert(copies))
   return copies.length
 }
 
 /** Passe en "effectuée" les séances planifiées déjà terminées (réglage autoFait). */
 export async function synchroniserSeancesPassees() {
-  const planifiees = await db.seances.where('statut').equals('planifie').toArray()
+  const planifiees = versObjets(leverSiErreur(await supabase.from('seances').select('id, date, fin').eq('statut', 'planifie')))
   const aFaire = planifiees.filter((s) => estPasse(s.date, s.fin)).map((s) => s.id)
-  if (aFaire.length) await db.seances.bulkUpdate(aFaire.map((id) => ({ key: id, changes: { statut: 'fait' } })))
+  if (aFaire.length) leverSiErreur(await supabase.from('seances').update({ statut: 'fait' }).in('id', aFaire))
   return aFaire.length
 }
 
 /* --------------------------------- Paiements -------------------------------- */
 
 export async function basculerPaiement(ecoleId, mois, statut, montant) {
-  const existant = await db.paiements.where({ ecoleId: Number(ecoleId), mois }).first()
-  const donnees = {
-    ecoleId: Number(ecoleId),
-    mois,
-    statut,
-    montant: Number(montant) || 0,
-    datePaiement: statut === 'paye' ? new Date().toISOString().slice(0, 10) : null,
-  }
-  if (existant) return db.paiements.update(existant.id, donnees)
-  return db.paiements.add(donnees)
+  const user_id = await utilisateurId()
+  leverSiErreur(
+    await supabase.from('paiements').upsert(
+      {
+        user_id,
+        ecole_id: Number(ecoleId),
+        mois,
+        statut,
+        montant: Number(montant) || 0,
+        date_paiement: statut === 'paye' ? new Date().toISOString().slice(0, 10) : null,
+      },
+      { onConflict: 'user_id,ecole_id,mois' }
+    )
+  )
 }
 
 /* ---------------------------------- Divers ---------------------------------- */

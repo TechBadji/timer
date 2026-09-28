@@ -1,29 +1,84 @@
-// Lectures réactives : chaque écriture Dexie rafraîchit automatiquement l'UI.
-import { useLiveQuery } from 'dexie-react-hooks'
-import { useMemo } from 'react'
-import { db, lireReglages } from './db'
+// Lectures réactives : chargement initial puis abonnement Realtime Supabase —
+// toute écriture (même depuis un autre appareil connecté au même compte)
+// rafraîchit automatiquement l'UI.
+import { useEffect, useMemo, useState } from 'react'
+import { supabase, versObjets, lireReglages } from './supabase'
 import { REGLAGES_DEFAUT } from './constants'
 import { bornesMois, decalerJours } from '../lib/dates'
 
-export const useEcoles = () => useLiveQuery(() => db.ecoles.orderBy('ordre').toArray(), [], [])
+/**
+ * Charge une table et se ré-abonne à ses changements. `cle` fait partie de la
+ * dépendance de l'effet : un filtre différent relance le chargement.
+ */
+function useTable(table, { ordre, colonne, valeur } = {}, deps = []) {
+  const [lignes, setLignes] = useState(null)
 
-export const useMatieres = () => useLiveQuery(() => db.matieres.toArray(), [], [])
+  useEffect(() => {
+    let vivant = true
+    async function charger() {
+      let requete = supabase.from(table).select('*')
+      if (colonne) requete = requete.eq(colonne, valeur)
+      if (ordre) requete = requete.order(ordre)
+      const { data, error } = await requete
+      if (!vivant) return
+      if (error) {
+        console.error(`Lecture ${table} :`, error.message)
+        return
+      }
+      setLignes(versObjets(data))
+    }
+    charger()
+    const canal = supabase
+      .channel(`${table}-${colonne || 'all'}-${valeur || ''}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table }, charger)
+      .subscribe()
+    return () => {
+      vivant = false
+      supabase.removeChannel(canal)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table, ordre, colonne, valeur, ...deps])
 
-export const useTarifs = () => useLiveQuery(() => db.tarifs.toArray(), [], [])
+  return lignes || []
+}
 
-export const useReglages = () => useLiveQuery(() => lireReglages(), [], REGLAGES_DEFAUT)
+export const useEcoles = () => useTable('ecoles', { ordre: 'ordre' })
 
-export const usePaiements = () => useLiveQuery(() => db.paiements.toArray(), [], [])
+export const useMatieres = () => useTable('matieres')
 
-export const useSeances = () => useLiveQuery(() => db.seances.toArray(), [], [])
+export const useTarifs = () => useTable('tarifs')
+
+export const usePaiements = () => useTable('paiements')
+
+export const useSeances = () => useTable('seances')
+
+export function useReglages() {
+  const [reglages, setReglages] = useState(REGLAGES_DEFAUT)
+  useEffect(() => {
+    let vivant = true
+    const charger = () => lireReglages().then((r) => vivant && setReglages(r))
+    charger()
+    const canal = supabase
+      .channel('reglages')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reglages' }, charger)
+      .subscribe()
+    return () => {
+      vivant = false
+      supabase.removeChannel(canal)
+    }
+  }, [])
+  return reglages
+}
 
 /** Séances entre deux dates ISO incluses. */
-export const useSeancesEntre = (debut, fin) =>
-  useLiveQuery(
-    () => (debut && fin ? db.seances.where('date').between(debut, decalerJours(fin, 1), true, false).toArray() : []),
-    [debut, fin],
-    []
-  )
+export const useSeancesEntre = (debut, fin) => {
+  const toutes = useSeances()
+  return useMemo(() => {
+    if (!debut || !fin) return []
+    const finExclue = decalerJours(fin, 1)
+    return toutes.filter((s) => s.date >= debut && s.date < finExclue)
+  }, [toutes, debut, fin])
+}
 
 export const useSeancesMois = (mois) => {
   const { debut, fin } = bornesMois(mois)

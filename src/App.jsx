@@ -1,11 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useRoute } from './lib/router'
-import { assurerReglages } from './data/db'
+import { assurerReglages } from './data/supabase'
 import { synchroniserSeancesPassees } from './data/repo'
 import { useReferentiel, useSeances } from './data/queries'
 import { planifierRappels, permissionNotifications } from './lib/notifications'
-import { compteExiste, sessionValide, fermerSession } from './lib/auth'
-import { sauvegarderAutoSiNecessaire } from './lib/backup'
+import { sessionActuelle, onChangementSession, fermerSession } from './lib/auth'
 import { FournisseurToast } from './components/ui'
 import LoginPage from './pages/LoginPage'
 // Chaque écran est un chunk séparé : FullCalendar et Recharts ne sont
@@ -26,30 +25,30 @@ const ONGLETS = [
 export default function App() {
   const { chemin, params, naviguer } = useRoute()
   const [pret, setPret] = useState(false)
-  const [auth, setAuth] = useState('chargement') // 'chargement' | 'creation' | 'connexion' | 'ok'
+  const [connecte, setConnecte] = useState(false)
+  const auth = pret ? (connecte ? 'ok' : 'connexion') : 'chargement'
   const referentiel = useReferentiel()
   const seances = useSeances()
 
-  // Amorçage : réglages manquants + vérification de l'accès local.
+  // Session Supabase : présente dès le chargement si déjà connecté sur cet
+  // appareil, puis tenue à jour à chaque connexion/déconnexion.
   useEffect(() => {
     let vivant = true
-    ;(async () => {
-      await assurerReglages()
+    sessionActuelle().then((session) => {
       if (!vivant) return
-      if (sessionValide()) {
-        setAuth('ok')
-      } else {
-        setAuth((await compteExiste()) ? 'connexion' : 'creation')
-      }
+      setConnecte(!!session)
       setPret(true)
-    })()
+    })
+    const desabonner = onChangementSession((session) => vivant && setConnecte(!!session))
     return () => {
       vivant = false
+      desabonner()
     }
   }, [])
 
+  // Réglages manquants (nouveaux réglages ajoutés depuis la dernière connexion).
   useEffect(() => {
-    if (pret && auth === 'ok') sauvegarderAutoSiNecessaire()
+    if (pret && auth === 'ok') assurerReglages()
   }, [pret, auth])
 
   useEffect(() => {
@@ -80,9 +79,7 @@ export default function App() {
   const largeur = chemin === 'calendrier' ? 'max-w-[1700px]' : 'max-w-3xl'
 
   if (!pret) return <Attente />
-  if (auth !== 'ok') {
-    return <LoginPage premierAcces={auth === 'creation'} onConnecte={() => setAuth('ok')} />
-  }
+  if (auth !== 'ok') return <LoginPage onConnecte={() => setConnecte(true)} />
 
   return (
     <FournisseurToast>
@@ -97,7 +94,7 @@ export default function App() {
         <button
           onClick={() => {
             fermerSession()
-            setAuth('connexion')
+            setConnecte(false)
           }}
           className="fixed right-3 top-[calc(0.75rem+var(--safe-top))] z-40 flex items-center gap-1.5 rounded-full bg-white px-3 py-2 text-[12px] font-semibold text-ink-700 shadow-card hover:bg-ink-50"
           aria-label="Se déconnecter"

@@ -20,9 +20,11 @@ export default function MatieresPage({ referentiel, seances }) {
   const enrichies = useMemo(
     () =>
       matieres
+        .map((m) => ({ ...m, avancement: progression(m, seances, reglages.seuilAlerteQuota) }))
         .map((m) => ({
           ...m,
-          avancement: progression(m, seances, reglages.seuilAlerteQuota),
+          // Terminée : archivée à la main, ou volume horaire entièrement réalisé.
+          terminee: m.statut === 'terminee' || m.avancement.complete,
           ecole: ecolesById.get(m.ecoleId),
           taux: tauxParCle.get(`${m.ecoleId}|${m.niveau}`) ?? 0,
         }))
@@ -31,11 +33,11 @@ export default function MatieresPage({ referentiel, seances }) {
   )
 
   const visibles = enrichies.filter(
-    (m) => m.statut === onglet && (!filtreEcole || m.ecoleId === Number(filtreEcole))
+    (m) => m.terminee === (onglet === 'terminee') && (!filtreEcole || m.ecoleId === Number(filtreEcole))
   )
 
   const totaux = useMemo(() => {
-    const enCours = enrichies.filter((m) => m.statut === 'en_cours')
+    const enCours = enrichies.filter((m) => !m.terminee)
     return {
       quota: enCours.reduce((t, m) => t + m.avancement.quota, 0),
       faites: enCours.reduce((t, m) => t + m.avancement.faites, 0),
@@ -44,7 +46,7 @@ export default function MatieresPage({ referentiel, seances }) {
     }
   }, [enrichies])
 
-  const nbTerminees = enrichies.filter((m) => m.statut === 'terminee').length
+  const nbTerminees = enrichies.filter((m) => m.terminee).length
 
   return (
     <div className="px-4 pt-[calc(1rem+var(--safe-top))]">
@@ -92,7 +94,7 @@ export default function MatieresPage({ referentiel, seances }) {
           texte={
             onglet === 'en_cours'
               ? "Créez une matière avec son volume horaire : l'avancement se décomptera automatiquement à chaque séance effectuée."
-              : 'Les matières que vous archivez apparaîtront ici avec leur bilan.'
+              : 'Les matières archivées ou dont le volume horaire est entièrement réalisé apparaissent ici avec leur bilan.'
           }
           action={
             onglet === 'en_cours' && (
@@ -110,12 +112,15 @@ export default function MatieresPage({ referentiel, seances }) {
               m={m}
               onEditer={() => setForm({ matiere: m })}
               onDetail={() => setDetail(m)}
-              onArchiver={() =>
+              // Quota atteint : déjà classée « terminée » d'office, rien à archiver.
+              onArchiver={m.terminee && m.statut !== 'terminee' ? undefined : () =>
                 setConfirmation({
                   titre: m.statut === 'terminee' ? 'Réactiver la matière ?' : 'Marquer comme terminée ?',
                   texte:
                     m.statut === 'terminee'
-                      ? `« ${m.nom} » repassera dans les matières en cours.`
+                      ? m.avancement.complete
+                        ? `« ${m.nom} » pourra de nouveau recevoir des séances, mais reste dans « Terminées » : son volume horaire est atteint.`
+                        : `« ${m.nom} » repassera dans les matières en cours.`
                       : `« ${m.nom} » rejoindra l'historique. Ses séances et son bilan sont conservés.`,
                   confirmer: m.statut === 'terminee' ? 'Réactiver' : 'Terminer',
                   onConfirmer: async () => {
@@ -209,9 +214,11 @@ function CarteMatiere({ m, onEditer, onDetail, onArchiver, onSupprimer }) {
           <button className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700" onClick={onEditer} aria-label="Modifier">
             <IconeCrayon size={17} />
           </button>
-          <button className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700" onClick={onArchiver} aria-label="Archiver">
-            <IconeArchive size={17} />
-          </button>
+          {onArchiver && (
+            <button className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700" onClick={onArchiver} aria-label="Archiver">
+              <IconeArchive size={17} />
+            </button>
+          )}
           <button className="rounded-lg p-1.5 text-ink-300 hover:bg-rose-50 hover:text-rose-600" onClick={onSupprimer} aria-label="Supprimer">
             <IconePoubelle size={17} />
           </button>

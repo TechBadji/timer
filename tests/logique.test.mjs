@@ -48,6 +48,15 @@ assert.equal(conflitsDe(a, [s(6, 10, '2026-09-07', '11:00', '13:00')], ctx).leng
 
 const carte = detecterConflits([a, chevauche, trajetCourt], ctx)
 assert.equal(carte.get(1).length, 2) // chevauchement avec 2, trajet avec 3
+
+// Arbitrage : une entrée par paire, et un trajet toléré disparaît tant que les créneaux ne bougent pas.
+const { listerConflits, clePaire } = await import('../src/lib/conflicts.js')
+const paires = listerConflits([a, chevauche, trajetCourt], ctx)
+assert.deepEqual(paires.map((p) => [p.a.id, p.b.id, p.type]), [[1, 2, 'chevauchement'], [1, 3, 'trajet'], [2, 3, 'chevauchement']])
+const tolere = { ...ctx, ignores: new Set([clePaire(trajetCourt, a)]) }
+assert.equal(listerConflits([a, trajetCourt], tolere).length, 0)
+assert.equal(listerConflits([a, { ...trajetCourt, debut: '11:10' }], tolere).length, 1, 'séance déplacée : conflit réévalué')
+assert.equal(listerConflits([a, { ...chevauche, statut: 'annule' }], ctx).length, 0, 'un cours annulé ne gêne plus')
 assert.equal(carte.get(2).length, 2) // chevauchement avec 1 et avec 3
 assert.equal(carte.get(3).length, 2) // trajet depuis 1, chevauchement avec 2
 assert.equal(carte.get(1).map((c) => c.type).sort().join(','), 'chevauchement,trajet')
@@ -91,5 +100,13 @@ assert.equal(Math.round(variation(150, 100)), 50)
 assert.equal(variation(10, 0), 100)
 assert.equal(moisDe('2026-09-07'), '2026-09')
 console.log('✓ récap mensuel')
+
+const { analyserClasses, libelleClasses } = await import('../src/lib/classes.js')
+assert.deepEqual(analyserClasses(' L3 IA, L3  GLRS ; l3 ia,, IAGE\nETSE '), ['L3 IA', 'L3 GLRS', 'IAGE', 'ETSE'])
+assert.deepEqual(analyserClasses(['L3 IA', 'L3 GLRS']), ['L3 IA', 'L3 GLRS'])
+assert.deepEqual(analyserClasses(undefined), [])
+assert.equal(libelleClasses({ classes: ['L3 IA', 'L3 GLRS'] }), 'L3 IA, L3 GLRS')
+assert.equal(libelleClasses({}), '')
+console.log('✓ classes d\'une matière')
 
 console.log('\nTous les tests de logique passent.')

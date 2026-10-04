@@ -24,6 +24,8 @@ create table matieres (
   ecole_id bigint not null references ecoles on delete cascade,
   nom text not null,
   niveau text not null,
+  -- Classes concernées (ex. {'L3 IA','L3 GLRS'}) : une matière peut en regrouper plusieurs.
+  classes text[] not null default '{}',
   volume_horaire numeric not null default 0,
   statut text not null default 'en_cours',
   mode_par_defaut text not null default 'presentiel',

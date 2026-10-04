@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { NIVEAUX, MODES } from '../data/constants'
 import { creerMatiere, majMatiere } from '../data/repo'
+import { analyserClasses, libelleClasses } from '../lib/classes'
 import { Modale, Champ, Saisie, Liste, Segments, Zone, useToast } from './ui'
 
-const VIDE = { nom: '', ecoleId: '', niveau: 'Licence', volumeHoraire: '', modeParDefaut: 'presentiel', lieuParDefaut: '', lienParDefaut: '', note: '' }
+const VIDE = { nom: '', ecoleId: '', niveau: 'Licence', classes: '', volumeHoraire: '', modeParDefaut: 'presentiel', lieuParDefaut: '', lienParDefaut: '', note: '' }
 
 export default function MatiereForm({ ouvert, onFermer, matiere, ecoles, tauxParCle, onEnregistre }) {
   const [f, setF] = useState(VIDE)
@@ -15,7 +16,7 @@ export default function MatiereForm({ ouvert, onFermer, matiere, ecoles, tauxPar
     setErreurs({})
     setF(
       matiere
-        ? { ...VIDE, ...matiere, volumeHoraire: String(matiere.volumeHoraire ?? '') }
+        ? { ...VIDE, ...matiere, classes: libelleClasses(matiere), volumeHoraire: String(matiere.volumeHoraire ?? '') }
         : { ...VIDE, ecoleId: ecoles[0]?.id ?? '' }
     )
   }, [ouvert, matiere, ecoles])
@@ -32,10 +33,13 @@ export default function MatiereForm({ ouvert, onFermer, matiere, ecoles, tauxPar
     if (Object.keys(e).length) return
 
     if (matiere) {
+      const classes = analyserClasses(f.classes)
       await majMatiere(matiere.id, {
         nom: f.nom.trim(),
         ecoleId: Number(f.ecoleId),
         niveau: f.niveau,
+        // Même tolérance qu'à la création : rien à envoyer si la matière n'a jamais eu de classe.
+        classes: classes.length || matiere.classes?.length ? classes : undefined,
         volumeHoraire: Number(f.volumeHoraire),
         modeParDefaut: f.modeParDefaut,
         lieuParDefaut: f.lieuParDefaut,
@@ -57,7 +61,7 @@ export default function MatiereForm({ ouvert, onFermer, matiere, ecoles, tauxPar
       ouvert={ouvert}
       onFermer={onFermer}
       titre={matiere ? 'Modifier la matière' : 'Nouvelle matière'}
-      sousTitre="Nom, école, niveau et volume horaire à réaliser"
+      sousTitre="Nom, école, niveau, classes et volume horaire à réaliser"
       pied={
         <div className="flex gap-2">
           <button className="btn-secondaire flex-1" onClick={onFermer}>
@@ -89,6 +93,10 @@ export default function MatiereForm({ ouvert, onFermer, matiere, ecoles, tauxPar
             <Segments valeur={f.niveau} onChange={maj('niveau')} options={NIVEAUX.map((n) => ({ valeur: n, label: n }))} />
           </Champ>
         </div>
+
+        <Champ label="Classes (facultatif)" aide="Séparez les classes par une virgule si le cours en regroupe plusieurs">
+          <Saisie value={f.classes} onChange={(e) => maj('classes')(e.target.value)} placeholder="L3 IA, L3 GLRS, L3 IAGE, L3 ETSE" />
+        </Champ>
 
         <Champ
           label="Volume horaire prévu (heures)"

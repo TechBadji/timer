@@ -4,6 +4,7 @@
 // ici, donc on le fournit explicitement à chaque insertion.
 import { supabase, versLigne, versObjets, leverSiErreur } from './supabase'
 import { dureeHeures, decalerSemaines, estPasse } from '../lib/dates'
+import { analyserClasses } from '../lib/classes'
 
 const nettoyer = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
 
@@ -25,10 +26,14 @@ export async function majEcole(id, champs) {
 
 export async function creerMatiere(m) {
   const user_id = await utilisateurId()
+  const classes = analyserClasses(m.classes)
   const ligne = versLigne({
     nom: m.nom.trim(),
     ecoleId: Number(m.ecoleId),
     niveau: m.niveau,
+    // Envoyé seulement s'il y en a : une base sans la colonne `classes`
+    // (supabase/migration-classes.sql non exécuté) accepte encore les matières sans classe.
+    classes: classes.length ? classes : undefined,
     volumeHoraire: Number(m.volumeHoraire) || 0,
     statut: 'en_cours',
     modeParDefaut: m.modeParDefaut || 'presentiel',
@@ -120,6 +125,17 @@ export async function creerSeance(saisie, { repetitions = 0, intervalleSemaines 
   }
   const data = leverSiErreur(await supabase.from('seances').insert(aCreer).select('id'))
   return data.map((r) => r.id)
+}
+
+/**
+ * Copie une séance au même créneau : séance indépendante (hors série), au statut
+ * « planifiée » et au taux actuel de la grille. L'appelant la déplace ensuite.
+ * @returns {Promise<number>} identifiant de la copie
+ */
+export async function dupliquerSeance(s) {
+  const { matiereId, date, debut, fin, mode, lieu, lien, notes } = s
+  const [id] = await creerSeance({ matiereId, date, debut, fin, mode, lieu, lien, notes })
+  return id
 }
 
 export async function majSeance(id, champs) {

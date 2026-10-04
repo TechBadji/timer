@@ -1,19 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MODES, STATUTS_SEANCE } from '../data/constants'
-import { creerSeance, majSeance, supprimerSeance, supprimerSerie } from '../data/repo'
+import { creerSeance, dupliquerSeance, majSeance, supprimerSeance, supprimerSerie } from '../data/repo'
 import { conflitsDe } from '../lib/conflicts'
 import { dureeHeures, enHeure, enMinutes, formatDuree, jourLabel } from '../lib/dates'
 import { fcfa } from '../lib/money'
 import { progression } from '../lib/stats'
+import { libelleClasses } from '../lib/classes'
 import { Modale, Champ, Saisie, Liste, Segments, Zone, Bandeau, Puce, useToast } from './ui'
-import { IconePoubelle, IconeMicro } from './icons'
+import { IconePoubelle, IconeMicro, IconeCopie } from './icons'
 import { analyserSeance, ecouter, reconnaissanceDisponible } from '../lib/voix'
 import MatiereForm from './MatiereForm'
 
 const DUREES = [1, 1.5, 2, 3, 4]
 
-export default function SeanceForm({ ouvert, onFermer, seance, defauts, referentiel, seances, onSupprimee, dicterAuto }) {
-  const { ecoles, matieres, ecolesById, matieresById, tauxParCle, reglages } = referentiel
+export default function SeanceForm({ ouvert, onFermer, seance, defauts, referentiel, seances, onSupprimee, onDupliquee, dicterAuto }) {
+  const { ecoles, matieres, ecolesById, matieresById, tauxParCle, reglages, ignores } = referentiel
   const toast = useToast()
   const [f, setF] = useState({})
   const [erreurs, setErreurs] = useState({})
@@ -64,8 +65,9 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
       matieresById,
       ecolesById,
       trajetMinutes: reglages.trajetMinutes,
+      ignores,
     })
-  }, [f, seance, seances, matieresById, ecolesById, reglages.trajetMinutes])
+  }, [f, seance, seances, matieresById, ecolesById, reglages.trajetMinutes, ignores])
 
   const avancement = matiere ? progression(matiere, seances, reglages.seuilAlerteQuota) : null
   const depasseraitQuota =
@@ -155,6 +157,12 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
     onFermer()
   }
 
+  async function dupliquer() {
+    const id = await dupliquerSeance(seance)
+    onDupliquee(id)
+    onFermer()
+  }
+
   async function supprimer(toutLaSerie) {
     if (toutLaSerie && seance.serieId) {
       const n = await supprimerSerie(seance.serieId, seance.date)
@@ -179,6 +187,11 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
             {seance && (
               <button className="btn-danger px-3" onClick={() => setConfirmerSuppr(true)} aria-label="Supprimer">
                 <IconePoubelle />
+              </button>
+            )}
+            {seance && onDupliquee && (
+              <button className="btn-secondaire px-3" onClick={dupliquer} aria-label="Dupliquer" title="Dupliquer ce cours">
+                <IconeCopie />
               </button>
             )}
             <button className="btn-secondaire flex-1" onClick={onFermer}>
@@ -241,7 +254,7 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
                     <optgroup key={ec.id} label={ec.code}>
                       {lot.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.nom} · {m.niveau}
+                          {[m.nom, m.niveau, libelleClasses(m)].filter(Boolean).join(' · ')}
                         </option>
                       ))}
                     </optgroup>
@@ -258,6 +271,11 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-ink-50 px-3 py-2.5">
               <Puce couleur={ecole?.couleur}>{ecole?.code}</Puce>
               <Puce className="bg-ink-200/60 text-ink-600">{matiere.niveau}</Puce>
+              {(matiere.classes || []).map((c) => (
+                <Puce key={c} className="bg-ink-200/60 text-ink-600">
+                  {c}
+                </Puce>
+              ))}
               <span className="ml-auto text-[12px] font-semibold tabular text-ink-600">
                 {taux ? `${taux.toLocaleString('fr-FR')} FCFA/h` : 'Taux non défini'}
               </span>

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { progression } from '../lib/stats'
 import { formatDuree } from '../lib/dates'
 import { fcfa } from '../lib/money'
+import { libelleClasses } from '../lib/classes'
 import { changerStatutMatiere, supprimerMatiere } from '../data/repo'
 import { Vide, Puce, Progression, useToast, Confirmation, Modale, Bandeau } from '../components/ui'
 import { IconePlus, IconeLivre, IconeCrayon, IconePoubelle, IconeArchive, IconeCheck } from '../components/icons'
@@ -186,6 +187,11 @@ function CarteMatiere({ m, onEditer, onDetail, onArchiver, onSupprimer }) {
           <div className="flex flex-wrap items-center gap-1.5">
             <Puce couleur={couleur}>{m.ecole?.code}</Puce>
             <Puce className="bg-ink-100 text-ink-500">{m.niveau}</Puce>
+            {(m.classes || []).map((c) => (
+              <Puce key={c} className="bg-ink-100 text-ink-600">
+                {c}
+              </Puce>
+            ))}
             {a.complete && (
               <Puce className="bg-emerald-100 text-emerald-700">
                 <IconeCheck size={11} /> Quota atteint
@@ -234,7 +240,7 @@ function DetailMatiere({ matiere, seances, onFermer }) {
   const a = matiere.avancement
 
   return (
-    <Modale ouvert onFermer={onFermer} titre={matiere.nom} sousTitre={`${matiere.ecole?.code} · ${matiere.niveau}`}>
+    <Modale ouvert onFermer={onFermer} titre={matiere.nom} sousTitre={[matiere.ecole?.code, matiere.niveau, libelleClasses(matiere)].filter(Boolean).join(' · ')}>
       <div className="mb-4 grid grid-cols-3 gap-2 text-center">
         {[
           ['Réalisé', formatDuree(a.faites)],

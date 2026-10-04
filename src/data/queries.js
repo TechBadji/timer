@@ -101,5 +101,6 @@ export function useReferentiel() {
     () => new Map((tarifs || []).map((t) => [`${t.ecoleId}|${t.niveau}`, t.taux])),
     [tarifs]
   )
-  return { ecoles, matieres, tarifs, reglages, ecolesById, matieresById, tauxParCle }
+  const ignores = useMemo(() => new Set(reglages.conflitsIgnores || []), [reglages.conflitsIgnores])
+  return { ecoles, matieres, tarifs, reglages, ecolesById, matieresById, tauxParCle, ignores }
 }

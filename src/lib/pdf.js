@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable'
 import { fcfa, pourPdf } from './money'
 import { formatDuree, jourLabel, moisLabel } from './dates'
 import { heuresDe, montantDe } from './stats'
+import { libelleClasses } from './classes'
 
 const INDIGO = [79, 70, 229]
 const ARDOISE = [100, 116, 139]
@@ -64,7 +65,7 @@ export function pdfEmploiDuTemps(seances, { matieresById, ecolesById, titre, per
           jourLabel(s.date, 'EEE dd/MM'),
           `${s.debut} – ${s.fin}`,
           e?.code || '—',
-          `${m?.nom || '—'}\n${m?.niveau || ''}`,
+          `${m?.nom || '—'}\n${[m?.niveau, libelleClasses(m)].filter(Boolean).join(' · ')}`,
           s.mode === 'ligne' ? 'En ligne' : 'Présentiel',
           s.mode === 'ligne' ? s.lien || '—' : s.lieu || '—',
         ],
@@ -197,8 +198,8 @@ export function pdfRecapMensuel(recap, { ecolesById, enseignant, precedent, paie
   // Détail des matières
   autoTable(doc, {
     startY: doc.lastAutoTable.finalY + 6,
-    head: [['Matière', 'École', 'Niveau', 'Heures', 'Montant']],
-    body: recap.parMatiere.map((m) => [m.nom, m.code, m.niveau, formatDuree(m.heures), fcfa(m.montant)].map(T)),
+    head: [['Matière', 'École', 'Niveau', 'Classes', 'Heures', 'Montant']],
+    body: recap.parMatiere.map((m) => [m.nom, m.code, m.niveau, libelleClasses(m) || '—', formatDuree(m.heures), fcfa(m.montant)].map(T)),
     styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2 },
     headStyles: { fillColor: [30, 41, 59], textColor: 255 },
   })

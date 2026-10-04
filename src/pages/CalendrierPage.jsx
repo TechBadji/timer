@@ -6,15 +6,17 @@ import listPlugin from '@fullcalendar/list'
 import interactionPlugin from '@fullcalendar/interaction'
 import frLocale from '@fullcalendar/core/locales/fr'
 import { useGrandEcran } from '../lib/media'
-import { detecterConflits, gravitePire } from '../lib/conflicts'
+import { detecterConflits, gravitePire, listerConflits } from '../lib/conflicts'
 import { bornesSemaine, formatDuree, format, toISO, jourLabel, aujourdhui } from '../lib/dates'
 import { heuresDe } from '../lib/stats'
+import { libelleClasses } from '../lib/classes'
 import { deplacerSeance, dupliquerSemaine, marquerFait } from '../data/repo'
 import { Modale, Saisie, Champ, Vide, Puce, useToast, Bandeau } from '../components/ui'
 import {
   IconePlus, IconeMicro, IconeChevronGauche, IconeChevronDroite, IconeCopie, IconePartage, IconeCalendrier, IconeCheck,
 } from '../components/icons'
 import SeanceForm from '../components/SeanceForm'
+import Conflits from '../components/Conflits'
 import { reconnaissanceDisponible } from '../lib/voix'
 
 const VUES = [
@@ -25,7 +27,7 @@ const VUES = [
 ]
 
 export default function CalendrierPage({ params, referentiel, seances }) {
-  const { ecoles, ecolesById, matieresById, reglages, matieres } = referentiel
+  const { ecoles, ecolesById, matieresById, reglages, matieres, ignores } = referentiel
   const toast = useToast()
   const grandEcran = useGrandEcran()
   const calRef = useRef(null)
@@ -35,11 +37,18 @@ export default function CalendrierPage({ params, referentiel, seances }) {
   const [form, setForm] = useState(null) // { seance } | { defauts }
   const [dupliquer, setDupliquer] = useState(false)
   const [nbCopies, setNbCopies] = useState(3)
+  const [copieId, setCopieId] = useState(null) // séance tout juste dupliquée, à glisser vers son créneau
 
-  const conflits = useMemo(
-    () => detecterConflits(seances, { matieresById, ecolesById, trajetMinutes: reglages.trajetMinutes }),
-    [seances, matieresById, ecolesById, reglages.trajetMinutes]
+  // Arbitrage des conflits : la liste, et le retour à la liste après avoir déplacé un cours.
+  const [voirConflits, setVoirConflits] = useState(false)
+  const [retourConflits, setRetourConflits] = useState(false)
+
+  const ctxConflits = useMemo(
+    () => ({ matieresById, ecolesById, trajetMinutes: reglages.trajetMinutes, ignores }),
+    [matieresById, ecolesById, reglages.trajetMinutes, ignores]
   )
+  const conflits = useMemo(() => detecterConflits(seances, ctxConflits), [seances, ctxConflits])
+  const paires = useMemo(() => listerConflits(seances, ctxConflits), [seances, ctxConflits])
 
   // Ouverture sur une date précise (retour depuis une notification).
   useEffect(() => {
@@ -69,10 +78,11 @@ export default function CalendrierPage({ params, referentiel, seances }) {
             ecole: e,
             couleur: e?.couleur || '#64748b',
             conflit: gravitePire(conflits.get(s.id)),
+            copie: s.id === copieId,
           },
         }
       }),
-    [seances, matieresById, ecolesById, conflits]
+    [seances, matieresById, ecolesById, conflits, copieId]
   )
 
   const surDates = useCallback((info) => {
@@ -87,6 +97,7 @@ export default function CalendrierPage({ params, referentiel, seances }) {
       debut: format(start, 'HH:mm'),
       fin: format(end || start, 'HH:mm'),
     })
+    if (Number(info.event.id) === copieId) setCopieId(null)
     toast('Séance déplacée', 'info')
   }
 
@@ -95,7 +106,8 @@ export default function CalendrierPage({ params, referentiel, seances }) {
     [seances, plage]
   )
   const heuresPlage = seancesDeLaPlage.reduce((t, s) => t + heuresDe(s), 0)
-  const nbConflits = seancesDeLaPlage.filter((s) => conflits.has(s.id)).length
+  const nbConflits = paires.filter((p) => p.a.date >= plage.debut && p.a.date <= plage.fin).length
+  const nbConflitsAVenir = paires.filter((p) => p.a.date >= aujourdhui()).length
 
   const nouveauCours = (dicter = false) =>
     setForm({ dicter, defauts: { date: plage.debut <= aujourdhui() && aujourdhui() <= plage.fin ? aujourdhui() : plage.debut } })
@@ -137,7 +149,13 @@ export default function CalendrierPage({ params, referentiel, seances }) {
           </h1>
           <p className="text-[12.5px] text-ink-500">
             {seancesDeLaPlage.length} séance{seancesDeLaPlage.length > 1 ? 's' : ''} · {formatDuree(heuresPlage)}
-            {nbConflits > 0 && <span className="ml-1.5 font-semibold text-rose-600">· {nbConflits} en conflit</span>}
+            {(nbConflits > 0 || nbConflitsAVenir > 0) && (
+              <button className="ml-1.5 font-semibold text-rose-600 underline underline-offset-2" onClick={() => setVoirConflits(true)}>
+                {nbConflits > 0
+                  ? `${nbConflits} conflit${nbConflits > 1 ? 's' : ''} à arbitrer`
+                  : `${nbConflitsAVenir} conflit${nbConflitsAVenir > 1 ? 's' : ''} à venir`}
+              </button>
+            )}
           </p>
         </div>
         <button className="btn-secondaire px-2.5 py-2" onClick={() => setDupliquer(true)} title="Dupliquer la semaine">
@@ -178,6 +196,20 @@ export default function CalendrierPage({ params, referentiel, seances }) {
           ))}
         </div>
       </div>
+
+      {copieId && (
+        <div className="mb-3 flex shrink-0 items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <Bandeau ton="info">
+              Copie créée sur le même créneau (encadrée). {grandEcran ? 'Glissez-la' : 'Maintenez le doigt dessus puis glissez-la'} vers
+              le bon emplacement.
+            </Bandeau>
+          </div>
+          <button className="btn-secondaire px-3 py-2 text-[13px]" onClick={() => setCopieId(null)}>
+            OK
+          </button>
+        </div>
+      )}
 
       {matieres.length === 0 ? (
         <Vide
@@ -274,12 +306,32 @@ export default function CalendrierPage({ params, referentiel, seances }) {
 
       <SeanceForm
         ouvert={!!form}
-        onFermer={() => setForm(null)}
+        onFermer={() => {
+          setForm(null)
+          if (retourConflits) {
+            setRetourConflits(false)
+            setVoirConflits(true)
+          }
+        }}
         seance={form?.seance}
         defauts={form?.defauts}
         dicterAuto={!!form?.dicter}
         referentiel={referentiel}
         seances={seances}
+        onDupliquee={setCopieId}
+      />
+
+      <Conflits
+        ouvert={voirConflits}
+        onFermer={() => setVoirConflits(false)}
+        paires={paires}
+        plage={plage}
+        referentiel={referentiel}
+        onDeplacer={(s) => {
+          setVoirConflits(false)
+          setRetourConflits(true)
+          setForm({ seance: s })
+        }}
       />
 
       <Modale
@@ -315,7 +367,9 @@ export default function CalendrierPage({ params, referentiel, seances }) {
 
 /* Rendu personnalisé d'un événement du calendrier. */
 function Evenement({ arg }) {
-  const { couleur, ecole, matiere, seance, conflit } = arg.event.extendedProps
+  const { couleur, ecole, matiere, seance, conflit, copie } = arg.event.extendedProps
+  // Aperçu d'un créneau en cours de sélection (selectMirror) : aucune séance derrière.
+  if (!seance) return <p className="truncate px-1.5 py-1 text-[10.5px] font-bold leading-tight lg:text-[11.5px]">{arg.timeText}</p>
   const enLigne = seance.mode === 'ligne'
   const annule = seance.statut === 'annule'
   const mois = arg.view.type === 'dayGridMonth'
@@ -327,9 +381,10 @@ function Evenement({ arg }) {
         <span className="h-2 w-2 rounded-full" style={{ background: couleur }} />
         <span className="font-semibold text-ink-800">{matiere?.nom}</span>
         <span className="text-ink-500">
-          {ecole?.code} · {enLigne ? 'en ligne' : seance.lieu || 'présentiel'}
+          {[ecole?.code, libelleClasses(matiere), enLigne ? 'en ligne' : seance.lieu || 'présentiel'].filter(Boolean).join(' · ')}
         </span>
         {seance.notes && <span className="italic text-ink-600">— {seance.notes}</span>}
+        {copie && <span className="font-semibold text-brand-700">copie à déplacer</span>}
         {conflit && <span className="font-semibold text-rose-600">conflit</span>}
       </span>
     )
@@ -337,7 +392,7 @@ function Evenement({ arg }) {
 
   if (mois) {
     return (
-      <div title={seance.notes || undefined} className={`flex w-full items-center gap-1 overflow-hidden px-1 py-px ${annule ? 'opacity-40 line-through' : ''}`}>
+      <div title={seance.notes || undefined} className={`flex w-full items-center gap-1 overflow-hidden px-1 py-px ${annule ? 'opacity-40 line-through' : ''} ${copie ? 'animate-pulse rounded ring-2 ring-ink-900' : ''}`}>
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: couleur }} />
         <span className="truncate text-[10.5px] font-medium text-ink-700 lg:text-[12px]">
           {arg.timeText} {matiere?.nom}
@@ -348,21 +403,26 @@ function Evenement({ arg }) {
 
   return (
     <div
-      className={`h-full overflow-hidden rounded-md px-1.5 py-1 text-white ${annule ? 'opacity-40' : ''}`}
+      className={`h-full overflow-hidden rounded-md px-1.5 py-1 text-white ${annule ? 'opacity-40' : ''} ${copie ? 'animate-pulse' : ''}`}
       style={{
         background: enLigne ? `${couleur}22` : couleur,
         color: enLigne ? couleur : '#fff',
         border: enLigne ? `1.5px dashed ${couleur}` : 'none',
-        boxShadow: conflit === 'erreur' ? 'inset 0 0 0 2px #e11d48' : conflit ? 'inset 0 0 0 2px #f59e0b' : 'none',
+        boxShadow: copie ? 'inset 0 0 0 3px #0f172a' : conflit === 'erreur' ? 'inset 0 0 0 2px #e11d48' : conflit ? 'inset 0 0 0 2px #f59e0b' : 'none',
       }}
     >
-      <p className="truncate text-[10.5px] font-bold leading-tight opacity-90 lg:text-[11.5px]">{arg.timeText}</p>
+      <p className="truncate text-[10.5px] font-bold leading-tight opacity-90 lg:text-[11.5px]">
+        {copie ? 'Copie · à déplacer' : arg.timeText}
+      </p>
       <p className={`truncate text-[11.5px] font-semibold leading-tight lg:text-[13px] ${annule ? 'line-through' : ''}`}>
         {matiere?.nom}
       </p>
       <p className="truncate text-[10px] leading-tight opacity-85 lg:text-[11px]">
         {ecole?.code} · {enLigne ? 'visio' : seance.lieu || 'présentiel'}
       </p>
+      {matiere?.classes?.length > 0 && (
+        <p className="truncate text-[10px] leading-tight opacity-85 lg:text-[11px]">{libelleClasses(matiere)}</p>
+      )}
       {seance.notes && <p className="line-clamp-3 text-[10px] italic leading-tight opacity-90 lg:text-[11px]">{seance.notes}</p>}
     </div>
   )
@@ -393,6 +453,7 @@ function ProchaineSeance({ seances, referentiel, onOuvrir }) {
           {m?.nom}
         </button>
         <p className="truncate text-[12.5px] text-ink-500">
+          {m?.classes?.length > 0 && `${libelleClasses(m)} · `}
           {jourLabel(prochaine.date, 'EEE d MMM')} · {prochaine.debut}–{prochaine.fin} ·{' '}
           {prochaine.mode === 'ligne' ? 'En ligne' : prochaine.lieu || 'Présentiel'}
         </p>

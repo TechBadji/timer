@@ -16,6 +16,7 @@ const TYPES = {
 export function comparer(a, b, ctx) {
   if (a.date !== b.date) return null
   if (a.statut === 'annule' || b.statut === 'annule') return null
+  if (ctx.ignores?.has(clePaire(a, b))) return null
 
   const aD = enMinutes(a.debut)
   const aF = enMinutes(a.fin)
@@ -42,10 +43,22 @@ export function comparer(a, b, ctx) {
     return {
       type: 'trajet',
       gravite: TYPES.trajet.gravite,
+      ecart,
       message: `${formatDuree(ecart / 60)} seulement avant « ${nomCours(b, ctx)} » (${codeEcole(b, ctx)}) — ${requis} min de trajet nécessaires`,
     }
   }
   return null
+}
+
+/**
+ * Identifiant stable d'une paire de séances à leurs créneaux actuels : sert à
+ * mémoriser un conflit toléré. Déplacer l'une des deux séances change la clé,
+ * donc le conflit est réévalué.
+ */
+export function clePaire(a, b) {
+  const [x, y] = a.id <= b.id ? [a, b] : [b, a]
+  const creneau = (s) => `${s.id}@${s.date} ${s.debut}-${s.fin}`
+  return `${creneau(x)}|${creneau(y)}`
 }
 
 const matiereDe = (s, ctx) => ctx.matieresById?.get(s.matiereId)
@@ -93,6 +106,35 @@ export function detecterConflits(seances, ctx) {
     }
   }
   return resultat
+}
+
+/**
+ * Conflits à arbitrer, un par paire de séances (et non un par séance), triés par date.
+ * @returns {Array<{a:object, b:object, type:string, gravite:string, label:string, detail:string}>}
+ */
+export function listerConflits(seances, ctx) {
+  const parId = new Map(seances.map((s) => [s.id, s]))
+  const paires = []
+  for (const [id, conflits] of detecterConflits(seances, ctx)) {
+    const a = parId.get(id)
+    for (const c of conflits) {
+      // Chaque paire figure des deux côtés de la carte : on ne garde que le sens « a commence en premier ».
+      const b = c.avec
+      if (a.debut > b.debut || (a.debut === b.debut && a.id > b.id)) continue
+      paires.push({
+        a,
+        b,
+        type: c.type,
+        gravite: c.gravite,
+        label: TYPES[c.type].label,
+        detail:
+          c.type === 'trajet'
+            ? `${formatDuree(c.ecart / 60)} entre deux écoles, ${ctx.trajetMinutes ?? 45} min nécessaires`
+            : 'Les deux cours ont lieu en même temps',
+      })
+    }
+  }
+  return paires.sort((p, q) => (p.a.date + p.a.debut).localeCompare(q.a.date + q.a.debut))
 }
 
 function pousser(map, cle, valeur) {

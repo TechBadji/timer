@@ -71,6 +71,8 @@ function extraireHeures(n) {
   return heures
 }
 
+const contientMot = (n, mot) => new RegExp(`(^|[^a-z0-9])${mot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^a-z0-9])`).test(n)
+
 function extraireMatiere(n, matieres, ecoles) {
   const ecoleDe = new Map(ecoles.map((e) => [e.id, e]))
   let meilleur = null
@@ -81,6 +83,8 @@ function extraireMatiere(n, matieres, ecoles) {
     let score = nom.length
     if (e && (n.includes(norm(e.code)) || n.includes(norm(e.nom)))) score += 100
     if (m.niveau && n.includes(norm(m.niveau))) score += 50
+    // Départage deux matières homonymes d'une même école par la classe dictée (« … GLRS … »).
+    for (const c of m.classes || []) if (contientMot(n, norm(c))) score += 40
     if (!meilleur || score > meilleur.score) meilleur = { m, score }
   }
   return meilleur?.m || null

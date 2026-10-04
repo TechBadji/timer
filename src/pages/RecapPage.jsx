@@ -221,7 +221,10 @@ export default function RecapPage({ referentiel, seances }) {
               {recap.parMatiere.map((m) => (
                 <li key={m.matiereId} className="flex items-center gap-3 px-4 py-2.5">
                   <Puce couleur={m.couleur}>{m.code}</Puce>
-                  <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink-800">{m.nom}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink-800">
+                    {m.nom}
+                    {m.classes?.length > 0 && <span className="font-normal text-ink-400"> · {m.classes.join(', ')}</span>}
+                  </span>
                   <span className="shrink-0 text-[12.5px] tabular text-ink-500">{formatDuree(m.heures)}</span>
                   <span className="w-24 shrink-0 text-right text-[12.5px] font-semibold tabular text-ink-700">{fcfa(m.montant)}</span>
                 </li>

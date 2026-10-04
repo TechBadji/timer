@@ -29,6 +29,7 @@ export const REGLAGES_DEFAUT = {
   seuilAlerteQuota: 90, // % de progression déclenchant l'alerte "quota proche"
   autoFait: true, // marquer automatiquement "effectuée" une séance passée
   enseignant: 'Elias Badji',
+  conflitsIgnores: [], // conflits de trajet tolérés (clés de lib/conflicts.js → clePaire)
 }
 
 export const JOURS_COURTS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']

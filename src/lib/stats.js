@@ -93,7 +93,7 @@ export function construireRecap(mois, seances, { matieresById, ecolesById }) {
     cumul(
       parMatiere,
       matiere.id,
-      { matiereId: matiere.id, nom: matiere.nom, niveau: matiere.niveau, ecoleId: matiere.ecoleId, code: ecole?.code || '—', couleur: ecole?.couleur || '#64748b' },
+      { matiereId: matiere.id, nom: matiere.nom, niveau: matiere.niveau, classes: matiere.classes || [], ecoleId: matiere.ecoleId, code: ecole?.code || '—', couleur: ecole?.couleur || '#64748b' },
       s
     )
   }

@@ -26,6 +26,16 @@ assert.equal(c.matiereId, 11); assert.equal(c.date, '2026-10-03'); assert.equal(
 assert.equal(c.notes, 'chapitre 4 en salle C1'); assert.equal(c.lieu, undefined)
 console.log('✓ date littérale, « et demie », note libre non analysée')
 
+// Même matière, même école, classes différentes : la classe dictée départage.
+const homonymes = [
+  { id: 20, nom: 'Java', ecoleId: 3, niveau: 'Licence', classes: ['L3 IA', 'L3 IAGE'] },
+  { id: 21, nom: 'Java', ecoleId: 3, niveau: 'Licence', classes: ['L3 GLRS', 'L3 ETSE'] },
+]
+const b = (t) => analyserSeance(t, { matieres: homonymes, ecoles, reference: ref }).champs
+assert.equal(b('java L3 GLRS lundi à 8h').matiereId, 21)
+assert.equal(b('java l3 iage lundi à 8h').matiereId, 20)
+console.log('✓ matières homonymes départagées par la classe')
+
 c = a('bonjour')
 assert.deepEqual(c, {})
 console.log('✓ phrase sans information → rien de pré-rempli')

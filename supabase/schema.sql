@@ -14,7 +14,8 @@ create table ecoles (
   code text not null,
   nom text not null,
   couleur text not null,
-  ordre int not null default 0
+  ordre int not null default 0,
+  majoration_soir numeric not null default 0
 );
 
 /* --------------------------------- Matières -------------------------------- */
@@ -59,6 +60,11 @@ create table seances (
   lien text not null default '',
   statut text not null default 'planifie',
   notes text not null default '',
+  contenu_prevu text not null default '',
+  contenu_realise text not null default '',
+  travail_donne text not null default '',
+  type_seance text not null default 'cours',
+  notes_remises boolean not null default false,
   taux_horaire numeric not null default 0,
   serie_id text
 );
@@ -75,6 +81,8 @@ create table paiements (
   statut text not null default 'attente',
   montant numeric not null default 0,
   date_paiement date,
+  numero_facture text not null default '',
+  date_facture date,
   unique (user_id, ecole_id, mois)
 );
 

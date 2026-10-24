@@ -8,9 +8,11 @@ import frLocale from '@fullcalendar/core/locales/fr'
 import { useGrandEcran } from '../lib/media'
 import { detecterConflits, gravitePire, listerConflits } from '../lib/conflicts'
 import { bornesSemaine, formatDuree, format, toISO, jourLabel, aujourdhui } from '../lib/dates'
-import { heuresDe } from '../lib/stats'
+import { heuresDe, numeroterSeances, libelleRang } from '../lib/stats'
 import { libelleClasses } from '../lib/classes'
-import { deplacerSeance, dupliquerSemaine, marquerFait } from '../data/repo'
+import { creneauDe } from '../lib/creneau'
+import { estEvaluation, notesARemettre, typeSeance } from '../lib/evaluations'
+import { deplacerSeance, dupliquerSemaine, marquerFait, majSeance } from '../data/repo'
 import { Modale, Saisie, Champ, Vide, Puce, useToast, Bandeau } from '../components/ui'
 import {
   IconePlus, IconeMicro, IconeChevronGauche, IconeChevronDroite, IconeCopie, IconePartage, IconeCalendrier, IconeCheck,
@@ -44,8 +46,8 @@ export default function CalendrierPage({ params, referentiel, seances }) {
   const [retourConflits, setRetourConflits] = useState(false)
 
   const ctxConflits = useMemo(
-    () => ({ matieresById, ecolesById, trajetMinutes: reglages.trajetMinutes, ignores }),
-    [matieresById, ecolesById, reglages.trajetMinutes, ignores]
+    () => ({ matieresById, ecolesById, trajetMinutes: reglages.trajetMinutes, trajets: reglages.trajets, ignores }),
+    [matieresById, ecolesById, reglages.trajetMinutes, reglages.trajets, ignores]
   )
   const conflits = useMemo(() => detecterConflits(seances, ctxConflits), [seances, ctxConflits])
   const paires = useMemo(() => listerConflits(seances, ctxConflits), [seances, ctxConflits])
@@ -61,6 +63,7 @@ export default function CalendrierPage({ params, referentiel, seances }) {
     calRef.current?.getApi().changeView(vue)
   }, [vue])
 
+  const numeros = useMemo(() => numeroterSeances(seances, matieresById), [seances, matieresById])
   const evenements = useMemo(
     () =>
       seances.map((s) => {
@@ -79,10 +82,12 @@ export default function CalendrierPage({ params, referentiel, seances }) {
             couleur: e?.couleur || '#64748b',
             conflit: gravitePire(conflits.get(s.id)),
             copie: s.id === copieId,
+            numero: numeros.get(s.id),
+            soir: creneauDe(s.debut, reglages.heureDebutSoir) === 'soir',
           },
         }
       }),
-    [seances, matieresById, ecolesById, conflits, copieId]
+    [seances, matieresById, ecolesById, conflits, copieId, numeros, reglages.heureDebutSoir]
   )
 
   const surDates = useCallback((info) => {
@@ -284,6 +289,7 @@ export default function CalendrierPage({ params, referentiel, seances }) {
 
       {/* Prochaine séance */}
       <ProchaineSeance seances={seances} referentiel={referentiel} onOuvrir={(s) => setForm({ seance: s })} />
+      <NotesARemettre seances={seances} referentiel={referentiel} onOuvrir={(s) => setForm({ seance: s })} />
 
 
       {/* Boutons flottants */}
@@ -367,7 +373,8 @@ export default function CalendrierPage({ params, referentiel, seances }) {
 
 /* Rendu personnalisé d'un événement du calendrier. */
 function Evenement({ arg }) {
-  const { couleur, ecole, matiere, seance, conflit, copie } = arg.event.extendedProps
+  const { couleur, ecole, matiere, seance, conflit, copie, numero, soir } = arg.event.extendedProps
+  const rang = numero ? `S${numero.rang}/${numero.total}` : null
   // Aperçu d'un créneau en cours de sélection (selectMirror) : aucune séance derrière.
   if (!seance) return <p className="truncate px-1.5 py-1 text-[10.5px] font-bold leading-tight lg:text-[11.5px]">{arg.timeText}</p>
   const enLigne = seance.mode === 'ligne'
@@ -380,6 +387,9 @@ function Evenement({ arg }) {
       <span className={`inline-flex items-center gap-2 ${annule ? 'opacity-50 line-through' : ''}`}>
         <span className="h-2 w-2 rounded-full" style={{ background: couleur }} />
         <span className="font-semibold text-ink-800">{matiere?.nom}</span>
+        {numero && <span className="text-ink-500">{libelleRang(numero.rang)} / {numero.total}</span>}
+        {estEvaluation(seance) && <span className="rounded-full bg-rose-100 px-1.5 text-[11px] font-semibold text-rose-700">{typeSeance(seance.typeSeance).label}</span>}
+        {soir && <span className="rounded-full bg-violet-100 px-1.5 text-[11px] font-semibold text-violet-700">soir</span>}
         <span className="text-ink-500">
           {[ecole?.code, libelleClasses(matiere), enLigne ? 'en ligne' : seance.lieu || 'présentiel'].filter(Boolean).join(' · ')}
         </span>
@@ -395,7 +405,7 @@ function Evenement({ arg }) {
       <div title={seance.notes || undefined} className={`flex w-full items-center gap-1 overflow-hidden px-1 py-px ${annule ? 'opacity-40 line-through' : ''} ${copie ? 'animate-pulse rounded ring-2 ring-ink-900' : ''}`}>
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: couleur }} />
         <span className="truncate text-[10.5px] font-medium text-ink-700 lg:text-[12px]">
-          {arg.timeText} {matiere?.nom}
+          {arg.timeText} {estEvaluation(seance) && `[${typeSeance(seance.typeSeance).court}] `}{matiere?.nom}
         </span>
       </div>
     )
@@ -413,6 +423,9 @@ function Evenement({ arg }) {
     >
       <p className="truncate text-[10.5px] font-bold leading-tight opacity-90 lg:text-[11.5px]">
         {copie ? 'Copie · à déplacer' : arg.timeText}
+        {!copie && rang && <span className="ml-1 opacity-80">· {rang}</span>}
+        {!copie && soir && <span className="ml-1" title="Cours du soir">☾</span>}
+        {!copie && estEvaluation(seance) && <span className="ml-1 rounded bg-white/90 px-1 text-[9.5px] font-bold uppercase text-rose-700">{typeSeance(seance.typeSeance).court}</span>}
       </p>
       <p className={`truncate text-[11.5px] font-semibold leading-tight lg:text-[13px] ${annule ? 'line-through' : ''}`}>
         {matiere?.nom}
@@ -424,6 +437,49 @@ function Evenement({ arg }) {
         <p className="truncate text-[10px] leading-tight opacity-85 lg:text-[11px]">{libelleClasses(matiere)}</p>
       )}
       {seance.notes && <p className="line-clamp-3 text-[10px] italic leading-tight opacity-90 lg:text-[11px]">{seance.notes}</p>}
+    </div>
+  )
+}
+
+/* Rappel des notes à remettre après contrôles, examens et soutenances. */
+function NotesARemettre({ seances, referentiel, onOuvrir }) {
+  const { matieresById, ecolesById, reglages } = referentiel
+  const toast = useToast()
+  const liste = useMemo(() => notesARemettre(seances, Number(reglages.delaiRemiseNotesJours) || 14, aujourdhui()), [seances, reglages.delaiRemiseNotesJours])
+  if (!liste.length) return null
+  const retard = liste.some((x) => x.joursRestants < 0)
+  return (
+    <div className={`carte mt-2 shrink-0 p-3.5 ${retard ? 'ring-1 ring-rose-200' : ''}`}>
+      <p className={`mb-1.5 text-[11px] font-semibold uppercase tracking-wide ${retard ? 'text-rose-600' : 'text-ink-400'}`}>
+        Notes à remettre ({liste.length})
+      </p>
+      <ul className="space-y-1.5">
+        {liste.map(({ seance, echeance, joursRestants }) => {
+          const m = matieresById.get(seance.matiereId)
+          const e = ecolesById.get(m?.ecoleId)
+          return (
+            <li key={seance.id} className="flex items-center gap-2 text-[13px]">
+              <Puce couleur={e?.couleur}>{e?.code}</Puce>
+              <button className="min-w-0 flex-1 truncate text-left font-medium text-ink-800" onClick={() => onOuvrir(seance)}>
+                {typeSeance(seance.typeSeance).label} · {m?.nom}
+                {m?.classes?.length > 0 && <span className="font-normal text-ink-400"> · {libelleClasses(m)}</span>}
+              </button>
+              <span className={`shrink-0 text-[12px] tabular ${joursRestants < 0 ? 'font-bold text-rose-600' : joursRestants <= 3 ? 'font-semibold text-amber-600' : 'text-ink-500'}`}>
+                {joursRestants < 0 ? `${-joursRestants} j de retard` : joursRestants === 0 ? "aujourd'hui" : `avant le ${jourLabel(echeance, 'd MMM')}`}
+              </span>
+              <button
+                className="btn-secondaire shrink-0 px-2 py-1 text-[12px]"
+                onClick={async () => {
+                  await majSeance(seance.id, { notesRemises: true })
+                  toast('Notes marquées remises')
+                }}
+              >
+                Remises
+              </button>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

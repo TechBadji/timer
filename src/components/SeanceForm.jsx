@@ -6,6 +6,8 @@ import { dureeHeures, enHeure, enMinutes, formatDuree, jourLabel } from '../lib/
 import { fcfa } from '../lib/money'
 import { progression } from '../lib/stats'
 import { libelleClasses } from '../lib/classes'
+import { creneauDe, tauxCreneau } from '../lib/creneau'
+import { TYPES_SEANCE, estEvaluation } from '../lib/evaluations'
 import { Modale, Champ, Saisie, Liste, Segments, Zone, Bandeau, Puce, useToast } from './ui'
 import { IconePoubelle, IconeMicro, IconeCopie } from './icons'
 import { analyserSeance, ecouter, reconnaissanceDisponible } from '../lib/voix'
@@ -49,13 +51,21 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
         lien: m?.lienParDefaut || '',
         statut: 'planifie',
         notes: '',
+        contenuPrevu: '',
+        contenuRealise: '',
+        travailDonne: '',
+        typeSeance: 'cours',
+        notesRemises: false,
       })
     }
   }, [ouvert, seance, defauts])
 
   const matiere = matieresById.get(Number(f.matiereId))
   const ecole = ecolesById.get(matiere?.ecoleId)
-  const taux = seance?.tauxHoraire ?? (matiere ? tauxParCle.get(`${matiere.ecoleId}|${matiere.niveau}`) ?? 0 : 0)
+  const creneau = f.debut ? creneauDe(f.debut, reglages.heureDebutSoir) : 'jour'
+  const taux =
+    seance?.tauxHoraire ??
+    (matiere ? tauxCreneau(tauxParCle.get(`${matiere.ecoleId}|${matiere.niveau}`) ?? 0, ecole?.majorationSoir, creneau) : 0)
   const duree = f.debut && f.fin ? dureeHeures(f.debut, f.fin) : 0
   const montant = duree * taux
 
@@ -65,9 +75,10 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
       matieresById,
       ecolesById,
       trajetMinutes: reglages.trajetMinutes,
+      trajets: reglages.trajets,
       ignores,
     })
-  }, [f, seance, seances, matieresById, ecolesById, reglages.trajetMinutes, ignores])
+  }, [f, seance, seances, matieresById, ecolesById, reglages.trajetMinutes, reglages.trajets, ignores])
 
   const avancement = matiere ? progression(matiere, seances, reglages.seuilAlerteQuota) : null
   const depasseraitQuota =
@@ -148,6 +159,11 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
         lien: f.mode === 'ligne' ? f.lien : '',
         statut: f.statut,
         notes: f.notes,
+        contenuPrevu: f.contenuPrevu,
+        contenuRealise: f.contenuRealise,
+        travailDonne: f.travailDonne,
+        typeSeance: f.typeSeance || 'cours',
+        notesRemises: !!f.notesRemises,
       })
       toast('Enregistrement effectué avec succès')
     } else {
@@ -276,6 +292,10 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
                   {c}
                 </Puce>
               ))}
+              <Puce className={creneau === 'soir' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'}>
+                {creneau === 'soir' ? 'Soir' : 'Jour'}
+                {creneau === 'soir' && !seance && Number(ecole?.majorationSoir) > 0 && ` +${ecole.majorationSoir} %`}
+              </Puce>
               <span className="ml-auto text-[12px] font-semibold tabular text-ink-600">
                 {taux ? `${taux.toLocaleString('fr-FR')} FCFA/h` : 'Taux non défini'}
               </span>
@@ -328,6 +348,16 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
             </Champ>
           )}
 
+          <Champ label="Type de séance">
+            <Segments valeur={f.typeSeance || 'cours'} onChange={maj('typeSeance')} options={TYPES_SEANCE.map((t) => ({ valeur: t.valeur, label: t.label }))} />
+          </Champ>
+          {seance && estEvaluation(f) && (
+            <label className="flex items-center gap-2.5 rounded-xl bg-ink-50 px-3 py-2.5 text-[13px] font-medium text-ink-700">
+              <input type="checkbox" className="h-4 w-4 accent-emerald-600" checked={!!f.notesRemises} onChange={(e) => maj('notesRemises')(e.target.checked)} />
+              Notes remises à l'école
+            </label>
+          )}
+
           {seance && (
             <Champ label="Statut">
               <Segments valeur={f.statut} onChange={maj('statut')} options={STATUTS_SEANCE.map((s) => ({ valeur: s.valeur, label: s.label }))} />
@@ -362,6 +392,23 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
               )}
             </div>
           )}
+
+          <details className="rounded-xl border border-ink-100 px-3 py-2" open={!!(f.contenuPrevu || f.contenuRealise || f.travailDonne)}>
+            <summary className="cursor-pointer text-[13px] font-semibold text-ink-700">Cahier de textes</summary>
+            <div className="mt-2 space-y-3">
+              <Champ label="Contenu prévu">
+                <Zone rows={2} value={f.contenuPrevu ?? ''} onChange={(e) => maj('contenuPrevu')(e.target.value)} placeholder="Chapitre 3 : routage statique, TP 2…" />
+              </Champ>
+              {(seance || f.statut === 'fait') && (
+                <Champ label="Réellement traité">
+                  <Zone rows={2} value={f.contenuRealise ?? ''} onChange={(e) => maj('contenuRealise')(e.target.value)} placeholder="Vide = identique au prévu" />
+                </Champ>
+              )}
+              <Champ label="Travail donné aux étudiants">
+                <Zone rows={2} value={f.travailDonne ?? ''} onChange={(e) => maj('travailDonne')(e.target.value)} placeholder="Exercices, lecture, rendu de projet…" />
+              </Champ>
+            </div>
+          </details>
 
           <Champ label="Notes (facultatif)">
             <Zone rows={2} value={f.notes ?? ''} onChange={(e) => maj('notes')(e.target.value)} placeholder="Chapitre, TP, évaluation…" />

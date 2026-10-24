@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList } from 'recharts'
 import { construireRecap, moisDisponibles, variation } from '../lib/stats'
-import { formatDuree, moisCourant, moisLabel, moisLabelCourt, moisPrecedent, moisSuivant } from '../lib/dates'
+import { aujourdhui, formatDuree, moisCourant, moisLabel, moisLabelCourt, moisPrecedent, moisSuivant } from '../lib/dates'
 import { fcfa, fcfaCourt } from '../lib/money'
 import { basculerPaiement } from '../data/repo'
 import { usePaiements } from '../data/queries'
-import { Statistique, Vide, Puce, useToast, Modale } from '../components/ui'
+import { etatFacture, facturesEnRetard, numeroFacture, texteRelance } from '../lib/facturation'
+import { Statistique, Vide, Puce, useToast, Modale, Bandeau } from '../components/ui'
 import { IconeGraphique, IconeChevronGauche, IconeChevronDroite, IconePartage, IconeArchive } from '../components/icons'
 
 export default function RecapPage({ referentiel, seances }) {
@@ -15,7 +16,8 @@ export default function RecapPage({ referentiel, seances }) {
   const [mois, setMois] = useState(moisCourant())
   const [historique, setHistorique] = useState(false)
 
-  const recap = useMemo(() => construireRecap(mois, seances, { matieresById, ecolesById }), [mois, seances, matieresById, ecolesById])
+  const heureSoir = reglages.heureDebutSoir
+  const recap = useMemo(() => construireRecap(mois, seances, { matieresById, ecolesById, heureSoir }), [mois, seances, matieresById, ecolesById, heureSoir])
   const recapPrec = useMemo(
     () => construireRecap(moisPrecedent(mois), seances, { matieresById, ecolesById }),
     [mois, seances, matieresById, ecolesById]
@@ -25,6 +27,36 @@ export default function RecapPage({ referentiel, seances }) {
     () => new Map(paiements.filter((p) => p.mois === mois).map((p) => [p.ecoleId, p])),
     [paiements, mois]
   )
+
+  const delai = Number(reglages.delaiPaiementJours) || 30
+  const retards = useMemo(() => facturesEnRetard(paiements, delai, aujourdhui()), [paiements, delai])
+
+  async function facturer(e) {
+    const ecole = ecolesById.get(e.ecoleId)
+    const numero = numeroFacture(ecole, mois)
+    const dateFacture = paiementsParEcole.get(e.ecoleId)?.dateFacture || aujourdhui()
+    await basculerPaiement(e.ecoleId, mois, 'facture', e.montant, { numeroFacture: numero, dateFacture })
+    const { pdfFacture, partagerOuTelecharger } = await import('../lib/pdf')
+    const { echeance } = etatFacture({ statut: 'facture', dateFacture }, delai, aujourdhui())
+    const doc = pdfFacture(recap, ecole, { numero, dateFacture, echeance, enseignant: reglages.enseignant })
+    const res = await partagerOuTelecharger(doc, `facture-${numero}.pdf`, `Facture ${numero}`)
+    toast(res === 'partage' ? `Facture ${numero} partagée` : `Facture ${numero} téléchargée`)
+  }
+
+  async function relancer(p) {
+    const ecole = ecolesById.get(p.ecoleId)
+    const heures = construireRecap(p.mois, seances, { matieresById, ecolesById }).parEcole.find((e) => e.ecoleId === p.ecoleId)?.heures
+    const texte = texteRelance(p, ecole, { enseignant: reglages.enseignant, heures })
+    try {
+      if (navigator.share) await navigator.share({ title: `Relance facture ${p.numeroFacture}`, text: texte })
+      else {
+        await navigator.clipboard.writeText(texte)
+        toast('Message de relance copié')
+      }
+    } catch (err) {
+      if (err?.name !== 'AbortError') toast('Impossible de partager la relance', 'erreur')
+    }
+  }
 
   const deltaHeures = variation(recap.heures, recapPrec.heures)
   const deltaMontant = variation(recap.montant, recapPrec.montant)
@@ -76,6 +108,25 @@ export default function RecapPage({ referentiel, seances }) {
           <IconeChevronDroite />
         </button>
       </div>
+
+      {retards.length > 0 && (
+        <div className="mb-4">
+          <Bandeau ton="erreur" titre={`${retards.length} facture${retards.length > 1 ? 's' : ''} en retard`}>
+            <ul className="mt-1 space-y-1.5">
+              {retards.map((p) => (
+                <li key={`${p.ecoleId}-${p.mois}`} className="flex items-center gap-2 text-[12.5px]">
+                  <span className="min-w-0 flex-1">
+                    <b>{ecolesById.get(p.ecoleId)?.code}</b> · {moisLabel(p.mois)} · {fcfa(p.montant)} · {p.joursRetard} j de retard
+                  </span>
+                  <button className="shrink-0 rounded-full bg-rose-600 px-2.5 py-1 text-[11px] font-bold text-white" onClick={() => relancer(p)}>
+                    Relancer
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Bandeau>
+        </div>
+      )}
 
       {recap.nbSeances === 0 ? (
         <Vide
@@ -175,38 +226,74 @@ export default function RecapPage({ referentiel, seances }) {
           </div>
 
           <section className="carte overflow-hidden">
-            <h2 className="px-4 pb-1 pt-4 text-[14px] font-bold text-ink-800">Détail par école & paiement</h2>
+            <h2 className="px-4 pb-1 pt-4 text-[14px] font-bold text-ink-800">Facturation par école</h2>
             <ul className="divide-y divide-ink-100">
               {recap.parEcole.map((e) => {
                 const p = paiementsParEcole.get(e.ecoleId)
-                const paye = p?.statut === 'paye'
+                const f = etatFacture(p, delai, aujourdhui())
+                const puces = {
+                  a_facturer: ['À facturer', 'bg-ink-100 text-ink-600'],
+                  facturee: ['Facturée', 'bg-amber-100 text-amber-700'],
+                  en_retard: [`Retard ${f.joursRetard} j`, 'bg-rose-100 text-rose-700'],
+                  payee: ['Payée', 'bg-emerald-100 text-emerald-700'],
+                }
+                const [libelle, classes] = puces[f.etat]
+                const changer = async (statut, message) => {
+                  await basculerPaiement(e.ecoleId, mois, statut, e.montant, { numeroFacture: p?.numeroFacture, dateFacture: p?.dateFacture })
+                  toast(message, statut === 'paye' ? 'succes' : 'info')
+                }
                 return (
                   <li key={e.ecoleId} className="flex items-center gap-3 px-4 py-3">
                     <span className="h-8 w-1 rounded-full" style={{ background: e.couleur }} />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[14px] font-semibold text-ink-900">{e.code}</p>
+                      <p className="truncate text-[14px] font-semibold text-ink-900">
+                        {e.code} <span className={`ml-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold ${classes}`}>{libelle}</span>
+                      </p>
                       <p className="text-[12px] tabular text-ink-500">
                         {formatDuree(e.heures)} · {e.nb} séance{e.nb > 1 ? 's' : ''} · {fcfa(e.montant)}
+                        {p?.numeroFacture && f.etat !== 'a_facturer' && ` · ${p.numeroFacture}`}
+                        {f.echeance && f.etat === 'facturee' && ` · échéance ${f.echeance.split('-').reverse().join('/')}`}
                       </p>
                     </div>
-                    <button
-                      onClick={async () => {
-                        await basculerPaiement(e.ecoleId, mois, paye ? 'en_attente' : 'paye', e.montant)
-                        toast(paye ? `${e.code} repassé en attente` : `${e.code} marqué payé`, paye ? 'info' : 'succes')
-                      }}
-                      className={`shrink-0 rounded-full px-3 py-1.5 text-[11.5px] font-bold transition ${
-                        paye ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                      }`}
-                    >
-                      {paye ? 'Payé' : 'En attente'}
-                    </button>
+                    <div className="flex shrink-0 gap-1.5">
+                      {f.etat === 'a_facturer' && (
+                        <button className="rounded-full bg-ink-900 px-3 py-1.5 text-[11.5px] font-bold text-white" onClick={() => facturer(e)}>
+                          Facturer
+                        </button>
+                      )}
+                      {(f.etat === 'facturee' || f.etat === 'en_retard') && (
+                        <>
+                          <button className="rounded-full bg-ink-100 px-2.5 py-1.5 text-[11.5px] font-semibold text-ink-700" onClick={() => facturer(e)} title="Régénérer le PDF">
+                            PDF
+                          </button>
+                          {f.etat === 'en_retard' && (
+                            <button className="rounded-full bg-rose-100 px-2.5 py-1.5 text-[11.5px] font-bold text-rose-700" onClick={() => relancer({ ...p, ecoleId: e.ecoleId })}>
+                              Relancer
+                            </button>
+                          )}
+                          <button className="rounded-full bg-emerald-600 px-3 py-1.5 text-[11.5px] font-bold text-white" onClick={() => changer('paye', `${e.code} marqué payé`)}>
+                            Payé
+                          </button>
+                        </>
+                      )}
+                      {f.etat === 'payee' && (
+                        <button className="rounded-full bg-emerald-100 px-3 py-1.5 text-[11.5px] font-bold text-emerald-700" onClick={() => changer('facture', `${e.code} repassé en facturé`)}>
+                          Annuler
+                        </button>
+                      )}
+                    </div>
                   </li>
                 )
               })}
             </ul>
           </section>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Repartition
+              titre="Jour / soir"
+              lignes={recap.parCreneau.map((c) => [c.creneau === 'soir' ? `Cours du soir (≥ ${heureSoir})` : 'Cours du jour', c.heures, c.montant])}
+              total={recap.heures}
+            />
             <Repartition titre="Par niveau" lignes={recap.parNiveau.map((n) => [n.niveau, n.heures, n.montant])} total={recap.heures} />
             <Repartition
               titre="Par mode"

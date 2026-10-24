@@ -38,12 +38,13 @@ export function comparer(a, b, ctx) {
   if (!ecoleA || !ecoleB || ecoleA === ecoleB) return null
 
   const ecart = bD >= aF ? bD - aF : aD - bF
-  const requis = ctx.trajetMinutes ?? 45
+  const requis = trajetEntre(ecoleA, ecoleB, ctx)
   if (ecart < requis) {
     return {
       type: 'trajet',
       gravite: TYPES.trajet.gravite,
       ecart,
+      requis,
       message: `${formatDuree(ecart / 60)} seulement avant « ${nomCours(b, ctx)} » (${codeEcole(b, ctx)}) — ${requis} min de trajet nécessaires`,
     }
   }
@@ -59,6 +60,15 @@ export function clePaire(a, b) {
   const [x, y] = a.id <= b.id ? [a, b] : [b, a]
   const creneau = (s) => `${s.id}@${s.date} ${s.debut}-${s.fin}`
   return `${creneau(x)}|${creneau(y)}`
+}
+
+/** Clé d'une paire d'écoles, indépendante du sens du trajet. */
+export const cleTrajet = (ecoleA, ecoleB) => [Number(ecoleA), Number(ecoleB)].sort((x, y) => x - y).join('|')
+
+/** Minutes de trajet entre deux écoles : valeur propre à la paire, sinon le délai global. */
+export const trajetEntre = (ecoleA, ecoleB, ctx) => {
+  const propre = ctx.trajets?.[cleTrajet(ecoleA, ecoleB)]
+  return propre === undefined || propre === '' ? ctx.trajetMinutes ?? 15 : Number(propre)
 }
 
 const matiereDe = (s, ctx) => ctx.matieresById?.get(s.matiereId)
@@ -129,7 +139,7 @@ export function listerConflits(seances, ctx) {
         label: TYPES[c.type].label,
         detail:
           c.type === 'trajet'
-            ? `${formatDuree(c.ecart / 60)} entre deux écoles, ${ctx.trajetMinutes ?? 45} min nécessaires`
+            ? `${formatDuree(c.ecart / 60)} entre deux écoles, ${c.requis} min nécessaires`
             : 'Les deux cours ont lieu en même temps',
       })
     }

@@ -3,6 +3,8 @@
 // côté Postgres ? non : Postgres ne connaît pas de "default auth.uid()" portable
 // ici, donc on le fournit explicitement à chaque insertion.
 import { supabase, versLigne, versObjets, leverSiErreur } from './supabase'
+import { creneauDe, tauxCreneau } from '../lib/creneau'
+import { REGLAGES_DEFAUT } from './constants'
 import { dureeHeures, decalerSemaines, estPasse } from '../lib/dates'
 import { analyserClasses } from '../lib/classes'
 
@@ -94,6 +96,11 @@ function normaliserSeance(s, taux) {
     lien: s.mode === 'ligne' ? s.lien || '' : '',
     statut: s.statut || 'planifie',
     notes: s.notes || '',
+    contenuPrevu: s.contenuPrevu || '',
+    contenuRealise: s.contenuRealise || '',
+    travailDonne: s.travailDonne || '',
+    typeSeance: s.typeSeance || 'cours',
+    notesRemises: !!s.notesRemises,
     // Taux figé à la création : modifier la grille plus tard ne réécrit pas le passé.
     tauxHoraire: Number(s.tauxHoraire ?? taux) || 0,
     serieId: s.serieId || null,
@@ -108,6 +115,11 @@ export async function creerSeance(saisie, { repetitions = 0, intervalleSemaines 
   const { data: matiere } = await supabase.from('matieres').select('ecole_id, niveau').eq('id', Number(saisie.matiereId)).maybeSingle()
   if (!matiere) throw new Error('Matière introuvable')
   const taux = await tauxPour(matiere.ecole_id, matiere.niveau)
+  const [{ data: ecole }, { data: reglageSoir }] = await Promise.all([
+    supabase.from('ecoles').select('majoration_soir').eq('id', matiere.ecole_id).maybeSingle(),
+    supabase.from('reglages').select('valeur').eq('cle', 'heureDebutSoir').maybeSingle(),
+  ])
+  const tauxApplique = tauxCreneau(taux, ecole?.majoration_soir, creneauDe(saisie.debut, reglageSoir?.valeur || REGLAGES_DEFAUT.heureDebutSoir))
   const user_id = await utilisateurId()
 
   const serieId = repetitions > 0 ? `s${Date.now()}` : null
@@ -117,7 +129,7 @@ export async function creerSeance(saisie, { repetitions = 0, intervalleSemaines 
       versLigne({
         ...normaliserSeance(
           { ...saisie, date: i === 0 ? saisie.date : decalerSemaines(saisie.date, i * intervalleSemaines), serieId },
-          taux
+          tauxApplique
         ),
         user_id,
       })
@@ -212,7 +224,13 @@ export async function synchroniserSeancesPassees() {
 
 /* --------------------------------- Paiements -------------------------------- */
 
-export async function basculerPaiement(ecoleId, mois, statut, montant) {
+const aujourdhuiISO = () => new Date().toISOString().slice(0, 10)
+
+/**
+ * Change le statut du paiement mensuel d'une école : 'en_attente' (à facturer), 'facture' ou 'paye'.
+ * Repasser « à facturer » efface la facture ; le numéro et la date d'émission sont conservés jusqu'au paiement.
+ */
+export async function basculerPaiement(ecoleId, mois, statut, montant, { numeroFacture, dateFacture } = {}) {
   const user_id = await utilisateurId()
   leverSiErreur(
     await supabase.from('paiements').upsert(
@@ -222,7 +240,9 @@ export async function basculerPaiement(ecoleId, mois, statut, montant) {
         mois,
         statut,
         montant: Number(montant) || 0,
-        date_paiement: statut === 'paye' ? new Date().toISOString().slice(0, 10) : null,
+        date_paiement: statut === 'paye' ? aujourdhuiISO() : null,
+        numero_facture: statut === 'en_attente' ? '' : numeroFacture || '',
+        date_facture: statut === 'en_attente' ? null : dateFacture || aujourdhuiISO(),
       },
       { onConflict: 'user_id,ecole_id,mois' }
     )

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NIVEAUX } from '../data/constants'
 import { ecrireReglage, supabase } from '../data/supabase'
 import { definirTarif, majEcole } from '../data/repo'
+import { cleTrajet } from '../lib/conflicts'
 import { telechargerSauvegarde, importerSauvegarde, viderSeances } from '../lib/backup'
 import { baseLocaleDisponible, migrerDepuisIndexedDB } from '../lib/migrationLocale'
 import { demanderPermission, notificationTest, permissionNotifications, notificationsSupportees } from '../lib/notifications'
@@ -131,7 +132,7 @@ export default function ReglagesPage({ referentiel, seances }) {
         </Section>
 
         {/* Écoles */}
-        <Section titre="Écoles" sousTitre="Nom affiché et code couleur du calendrier">
+        <Section titre="Écoles" sousTitre="Nom affiché, code couleur du calendrier et majoration des cours du soir">
           <ul className="space-y-2">
             {ecoles.map((e) => (
               <li key={e.id} className="flex items-center gap-2.5">
@@ -154,6 +155,20 @@ export default function ReglagesPage({ referentiel, seances }) {
                   }}
                   className="flex-1 py-1.5 text-[13px]"
                 />
+                <SaisieSynchro
+                  type="number"
+                  min="0"
+                  step="5"
+                  valeur={e.majorationSoir ?? 0}
+                  onCommit={async (v) => {
+                    await majEcole(e.id, { majorationSoir: Number(v) || 0 })
+                    toast('Enregistrement effectué avec succès')
+                  }}
+                  className="w-16 py-1.5 text-right text-[13px]"
+                  title="Majoration des cours du soir (%)"
+                  aria-label={`Majoration soir ${e.code} (%)`}
+                />
+                <span className="shrink-0 text-[11.5px] text-ink-400">% soir</span>
               </li>
             ))}
           </ul>
@@ -168,11 +183,20 @@ export default function ReglagesPage({ referentiel, seances }) {
             <Champ label="Fin de journée">
               <SaisieSynchro type="time" step="1800" valeur={reglages.heureFinJour} onCommit={(v) => majReglage('heureFinJour', v)} immediat />
             </Champ>
-            <Champ label="Temps de trajet (min)" aide="Entre deux écoles en présentiel">
+            <Champ label="Début des cours du soir" aide="Séances commençant à partir de cette heure">
+              <SaisieSynchro type="time" step="1800" valeur={reglages.heureDebutSoir} onCommit={(v) => majReglage('heureDebutSoir', v)} immediat />
+            </Champ>
+            <Champ label="Trajet par défaut (min)" aide="Paires d'écoles sans durée propre">
               <SaisieSynchro type="number" min="0" step="5" valeur={reglages.trajetMinutes} onCommit={(v) => majReglage('trajetMinutes', Number(v))} />
             </Champ>
             <Champ label="Alerte quota (%)" aide="Seuil de progression">
               <SaisieSynchro type="number" min="50" max="100" step="5" valeur={reglages.seuilAlerteQuota} onCommit={(v) => majReglage('seuilAlerteQuota', Number(v))} />
+            </Champ>
+            <Champ label="Remise des notes (jours)" aide="Après une évaluation">
+              <SaisieSynchro type="number" min="1" step="1" valeur={reglages.delaiRemiseNotesJours ?? 14} onCommit={(v) => majReglage('delaiRemiseNotesJours', Number(v))} />
+            </Champ>
+            <Champ label="Délai de paiement (jours)" aide="Au-delà, facture en retard">
+              <SaisieSynchro type="number" min="0" step="5" valeur={reglages.delaiPaiementJours ?? 30} onCommit={(v) => majReglage('delaiPaiementJours', Number(v))} />
             </Champ>
           </div>
           <Bascule
@@ -181,6 +205,42 @@ export default function ReglagesPage({ referentiel, seances }) {
             titre="Marquer automatiquement les séances passées"
             texte="Une séance planifiée dont l'horaire est écoulé passe en « effectuée » et décompte le quota."
           />
+        </Section>
+
+        {/* Trajets entre écoles */}
+        <Section titre="Trajets entre écoles" sousTitre="Minutes nécessaires entre deux cours en présentiel. Vide = trajet par défaut, 0 = même campus">
+          <ul className="divide-y divide-ink-100 rounded-xl border border-ink-200">
+            {ecoles.flatMap((a, i) =>
+              ecoles.slice(i + 1).map((b) => {
+                const cle = cleTrajet(a.id, b.id)
+                return (
+                  <li key={cle} className="flex items-center gap-2 px-3 py-1.5 text-[13px]">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: a.couleur }} />
+                    <span className="font-semibold text-ink-800">{a.code}</span>
+                    <span className="text-ink-400">↔</span>
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: b.couleur }} />
+                    <span className="min-w-0 flex-1 truncate font-semibold text-ink-800">{b.code}</span>
+                    <SaisieSynchro
+                      type="number"
+                      min="0"
+                      step="5"
+                      valeur={reglages.trajets?.[cle] ?? ''}
+                      placeholder={String(reglages.trajetMinutes)}
+                      onCommit={(v) => {
+                        const trajets = { ...(reglages.trajets || {}) }
+                        if (v === '') delete trajets[cle]
+                        else trajets[cle] = Number(v)
+                        majReglage('trajets', trajets)
+                      }}
+                      className="w-20 py-1 text-right text-[13px]"
+                      aria-label={`Trajet ${a.code} ↔ ${b.code} (min)`}
+                    />
+                    <span className="w-7 shrink-0 text-[11.5px] text-ink-400">min</span>
+                  </li>
+                )
+              })
+            )}
+          </ul>
         </Section>
 
         {/* Rappels */}

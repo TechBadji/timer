@@ -1,5 +1,6 @@
 // Agrégations : progression des matières et récapitulatif mensuel.
 import { dureeHeures, moisDe } from './dates'
+import { creneauDe } from './creneau'
 
 export const heuresDe = (s) => dureeHeures(s.debut, s.fin)
 export const montantDe = (s) => heuresDe(s) * (s.tauxHoraire || 0)
@@ -60,12 +61,13 @@ const cumul = (map, cle, base, s) => {
  * Récapitulatif complet d'un mois : totaux et répartitions.
  * @param {string} mois 'YYYY-MM'
  */
-export function construireRecap(mois, seances, { matieresById, ecolesById }) {
+export function construireRecap(mois, seances, { matieresById, ecolesById, heureSoir }) {
   const duMois = seances.filter((s) => moisDe(s.date) === mois && s.statut !== 'annule')
 
   const parEcole = new Map()
   const parNiveau = new Map()
   const parMode = new Map()
+  const parCreneau = new Map()
   const parMatiere = new Map()
 
   let heures = 0
@@ -90,6 +92,8 @@ export function construireRecap(mois, seances, { matieresById, ecolesById }) {
     cumul(parEcole, matiere.ecoleId, { ecoleId: matiere.ecoleId, code: ecole?.code || '—', nom: ecole?.nom || '—', couleur: ecole?.couleur || '#64748b' }, s)
     cumul(parNiveau, matiere.niveau, { niveau: matiere.niveau }, s)
     cumul(parMode, s.mode, { mode: s.mode }, s)
+    const creneau = creneauDe(s.debut, heureSoir)
+    cumul(parCreneau, creneau, { creneau }, s)
     cumul(
       parMatiere,
       matiere.id,
@@ -98,6 +102,7 @@ export function construireRecap(mois, seances, { matieresById, ecolesById }) {
     )
   }
 
+  const numeros = numeroterSeances(seances, matieresById)
   const trier = (map) => [...map.values()].sort((a, b) => b.heures - a.heures)
 
   return {
@@ -112,8 +117,9 @@ export function construireRecap(mois, seances, { matieresById, ecolesById }) {
     parEcole: trier(parEcole),
     parNiveau: trier(parNiveau),
     parMode: trier(parMode),
+    parCreneau: trier(parCreneau),
     parMatiere: trier(parMatiere),
-    seances: duMois.slice().sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut)),
+    seances: duMois.map((s) => ({ ...s, numero: numeros.get(s.id) })).sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut)),
   }
 }
 
@@ -126,3 +132,36 @@ export function moisDisponibles(seances) {
   const set = new Set(seances.map((s) => moisDe(s.date)))
   return [...set].sort().reverse()
 }
+
+/**
+ * Numérote les séances de chaque matière dans l'ordre chronologique (annulées exclues)
+ * et estime le nombre total de séances nécessaires pour couvrir le volume horaire :
+ * séances existantes + heures encore non programmées / durée moyenne d'une séance.
+ * @returns {Map<id, {rang, total, cumul, quota}>}
+ */
+export function numeroterSeances(seances, matieresById) {
+  const parMatiere = new Map()
+  for (const s of seances) {
+    if (s.statut === 'annule') continue
+    if (!parMatiere.has(s.matiereId)) parMatiere.set(s.matiereId, [])
+    parMatiere.get(s.matiereId).push(s)
+  }
+  const res = new Map()
+  for (const [matiereId, liste] of parMatiere) {
+    liste.sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut))
+    const quota = Number(matieresById.get(matiereId)?.volumeHoraire) || 0
+    const programme = liste.reduce((t, s) => t + heuresDe(s), 0)
+    const moyenne = programme / liste.length
+    const manquantes = quota > programme && moyenne > 0 ? Math.ceil((quota - programme) / moyenne - 1e-9) : 0
+    const total = liste.length + manquantes
+    let cumul = 0
+    liste.forEach((s, i) => {
+      cumul += heuresDe(s)
+      res.set(s.id, { rang: i + 1, total, cumul, quota })
+    })
+  }
+  return res
+}
+
+/** « 1ère séance », « 2ème séance »… */
+export const libelleRang = (rang) => `${rang}${rang === 1 ? 'ère' : 'ème'} séance`

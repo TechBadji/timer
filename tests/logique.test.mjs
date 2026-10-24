@@ -110,3 +110,80 @@ assert.equal(libelleClasses({}), '')
 console.log('✓ classes d\'une matière')
 
 console.log('\nTous les tests de logique passent.')
+
+/* ---- numérotation des séances ---- */
+{
+  const { numeroterSeances, libelleRang } = await import('../src/lib/stats.js')
+  const mats = new Map([['m', { id: 'm', volumeHoraire: 12 }]])
+  const ss = [
+    { id: 2, matiereId: 'm', date: '2026-01-09', debut: '08:00', fin: '11:00', statut: 'planifie' },
+    { id: 1, matiereId: 'm', date: '2026-01-02', debut: '08:00', fin: '11:00', statut: 'fait' },
+    { id: 3, matiereId: 'm', date: '2026-01-05', debut: '08:00', fin: '11:00', statut: 'annule' },
+  ]
+  const n = numeroterSeances(ss, mats)
+  assert.deepEqual(n.get(1), { rang: 1, total: 4, cumul: 3, quota: 12 })
+  assert.equal(n.get(2).rang, 2)
+  assert.equal(n.has(3), false)
+  assert.equal(libelleRang(1), '1ère séance')
+  assert.equal(libelleRang(3), '3ème séance')
+  console.log('✓ numérotation des séances')
+}
+
+/* ---- facturation ---- */
+{
+  const { numeroFacture, etatFacture, facturesEnRetard, texteRelance } = await import('../src/lib/facturation.js')
+  assert.equal(numeroFacture({ code: 'ism-ing' }, '2026-09'), 'ISM-ING-202609')
+  assert.equal(etatFacture(undefined, 30, '2026-10-24').etat, 'a_facturer')
+  assert.equal(etatFacture({ statut: 'paye' }, 30, '2026-10-24').etat, 'payee')
+  const f = { statut: 'facture', mois: '2026-08', dateFacture: '2026-09-01', montant: 150000, ecoleId: 1 }
+  assert.deepEqual(etatFacture(f, 30, '2026-10-01'), { etat: 'facturee', joursRetard: 0, echeance: '2026-10-01' })
+  assert.deepEqual(etatFacture(f, 30, '2026-10-24'), { etat: 'en_retard', joursRetard: 23, echeance: '2026-10-01' })
+  assert.equal(facturesEnRetard([f, { ...f, statut: 'paye' }], 30, '2026-10-24').length, 1)
+  assert.match(texteRelance(f, { code: 'BEMTECH' }, { enseignant: 'X', heures: 12 }), /BEMTECH-202608.*d.août 2026 \(12h\)/)
+  console.log('✓ facturation')
+}
+
+/* ---- jour / soir ---- */
+{
+  const { creneauDe, tauxCreneau } = await import('../src/lib/creneau.js')
+  assert.equal(creneauDe('17:59', '18:00'), 'jour')
+  assert.equal(creneauDe('18:00', '18:00'), 'soir')
+  assert.equal(tauxCreneau(10000, 20, 'soir'), 12000)
+  assert.equal(tauxCreneau(10000, 20, 'jour'), 10000)
+  assert.equal(tauxCreneau(10000, 0, 'soir'), 10000)
+  const mats = new Map([['m', { id: 'm', ecoleId: 'e', niveau: 'L3' }]])
+  const r = construireRecap('2026-10', [
+    { id: 1, matiereId: 'm', date: '2026-10-01', debut: '08:00', fin: '10:00', statut: 'fait', mode: 'presentiel', tauxHoraire: 1 },
+    { id: 2, matiereId: 'm', date: '2026-10-02', debut: '18:30', fin: '21:30', statut: 'fait', mode: 'presentiel', tauxHoraire: 1 },
+  ], { matieresById: mats, ecolesById: new Map(), heureSoir: '18:00' })
+  assert.deepEqual(r.parCreneau.map((c) => [c.creneau, c.heures]), [['soir', 3], ['jour', 2]])
+  console.log('✓ jour / soir')
+}
+
+/* ---- trajets par paire d'écoles ---- */
+{
+  const { cleTrajet } = await import('../src/lib/conflicts.js')
+  assert.equal(cleTrajet(2, 1), '1|2')
+  const a = s(1, 10, '2026-09-07', '08:00', '11:00')
+  const b = s(2, 11, '2026-09-07', '11:30', '13:00') // 30 min d'écart, défaut 45 → conflit
+  assert.equal(conflitsDe(a, [b], ctx)[0].type, 'trajet')
+  assert.equal(conflitsDe(a, [b], { ...ctx, trajets: { '1|2': 20 } }).length, 0, 'trajet propre plus court que le défaut')
+  const c = conflitsDe(a, [b], { ...ctx, trajetMinutes: 10, trajets: { '1|2': 40 } })[0]
+  assert.equal(c.requis, 40)
+  assert.match(c.message, /40 min/)
+  console.log('✓ trajets par paire d\'écoles')
+}
+
+/* ---- évaluations ---- */
+{
+  const { notesARemettre, estEvaluation } = await import('../src/lib/evaluations.js')
+  const ev = (id, date, extra = {}) => ({ id, date, typeSeance: 'examen', statut: 'fait', notesRemises: false, ...extra })
+  assert.equal(estEvaluation({ typeSeance: 'cours' }), false)
+  const l = notesARemettre(
+    [ev(1, '2026-10-01'), ev(2, '2026-10-20'), ev(3, '2026-10-30'), ev(4, '2026-10-01', { notesRemises: true }), { id: 5, date: '2026-10-01', typeSeance: 'cours' }],
+    14,
+    '2026-10-24'
+  )
+  assert.deepEqual(l.map((x) => [x.seance.id, x.joursRestants]), [[1, -9], [2, 10]])
+  console.log('✓ évaluations')
+}

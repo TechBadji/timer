@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { progression } from '../lib/stats'
+import { progression, numeroterSeances, libelleRang } from '../lib/stats'
 import { formatDuree } from '../lib/dates'
 import { fcfa } from '../lib/money'
 import { libelleClasses } from '../lib/classes'
@@ -162,7 +162,7 @@ export default function MatieresPage({ referentiel, seances }) {
         tauxParCle={tauxParCle}
       />
       <Confirmation etat={confirmation} onFermer={() => setConfirmation(null)} />
-      <DetailMatiere matiere={detail} seances={seances} onFermer={() => setDetail(null)} />
+      <DetailMatiere matiere={detail} seances={seances} enseignant={reglages.enseignant} onFermer={() => setDetail(null)} />
     </div>
   )
 }
@@ -239,12 +239,21 @@ function CarteMatiere({ m, onEditer, onDetail, onArchiver, onSupprimer }) {
   )
 }
 
-function DetailMatiere({ matiere, seances, onFermer }) {
+function DetailMatiere({ matiere, seances, enseignant, onFermer }) {
+  const toast = useToast()
   if (!matiere) return null
   const siennes = seances
     .filter((s) => s.matiereId === matiere.id && s.statut !== 'annule')
     .sort((a, b) => (b.date + b.debut).localeCompare(a.date + a.debut))
   const a = matiere.avancement
+  const numeros = numeroterSeances(siennes, new Map([[matiere.id, matiere]]))
+
+  async function exporterCahier() {
+    const { pdfCahierTextes, partagerOuTelecharger } = await import('../lib/pdf')
+    const doc = pdfCahierTextes(matiere, siennes.slice().reverse(), { enseignant })
+    const res = await partagerOuTelecharger(doc, `cahier-textes-${matiere.nom}.pdf`, `Cahier de textes ${matiere.nom}`)
+    toast(res === 'partage' ? 'Cahier de textes partagé' : 'PDF téléchargé')
+  }
 
   return (
     <Modale ouvert onFermer={onFermer} titre={matiere.nom} sousTitre={[matiere.ecole?.code, matiere.niveau, libelleClasses(matiere)].filter(Boolean).join(' · ')}>
@@ -265,19 +274,40 @@ function DetailMatiere({ matiere, seances, onFermer }) {
         {a.nbFaites} séance(s) effectuée(s) sur {a.nbSeances} · rémunération acquise {fcfa(a.faites * (matiere.taux || 0))}
       </p>
 
-      <h4 className="mb-2 mt-5 text-[13px] font-bold text-ink-700">Séances</h4>
+      <div className="mb-2 mt-5 flex items-center justify-between">
+        <h4 className="text-[13px] font-bold text-ink-700">Séances · cahier de textes</h4>
+        {siennes.length > 0 && (
+          <button className="btn-secondaire px-2.5 py-1.5 text-[12px]" onClick={exporterCahier}>
+            Exporter PDF
+          </button>
+        )}
+      </div>
       {siennes.length === 0 ? (
         <p className="text-[13px] text-ink-400">Aucune séance planifiée pour l'instant.</p>
       ) : (
         <ul className="divide-y divide-ink-100">
           {siennes.map((s) => (
-            <li key={s.id} className="flex items-center gap-3 py-2.5 text-[13px]">
+            <li key={s.id} className="py-2.5 text-[13px]">
+              <div className="flex items-center gap-3">
               <span className={`h-2 w-2 shrink-0 rounded-full ${s.statut === 'fait' ? 'bg-emerald-500' : 'bg-ink-300'}`} />
+              <span className="w-24 shrink-0 font-semibold text-ink-800">
+                {libelleRang(numeros.get(s.id).rang)}
+                <span className="block text-[11px] font-normal tabular text-ink-400">
+                  sur ~{numeros.get(s.id).total} · {formatDuree(numeros.get(s.id).cumul)}
+                </span>
+              </span>
               <span className="tabular text-ink-600">{s.date}</span>
               <span className="tabular text-ink-500">
                 {s.debut}–{s.fin}
               </span>
               <span className="ml-auto text-[12px] text-ink-400">{s.mode === 'ligne' ? 'En ligne' : s.lieu || 'Présentiel'}</span>
+              </div>
+              {(s.contenuRealise || s.contenuPrevu || s.travailDonne) && (
+                <div className="ml-5 mt-1 space-y-0.5 text-[12px] text-ink-600">
+                  {(s.contenuRealise || s.contenuPrevu) && <p>{s.contenuRealise || s.contenuPrevu}</p>}
+                  {s.travailDonne && <p className="text-ink-500">Travail : {s.travailDonne}</p>}
+                </div>
+              )}
             </li>
           ))}
         </ul>

@@ -24,11 +24,15 @@ export const STATUTS_SEANCE = [
 export const REGLAGES_DEFAUT = {
   heureDebutJour: '08:00',
   heureFinJour: '21:00',
-  trajetMinutes: 45, // temps de trajet minimum entre deux écoles en présentiel
+  heureDebutSoir: '18:00', // une séance commençant à partir de cette heure est un « cours du soir »
+  trajetMinutes: 15, // battement minimum entre deux écoles en présentiel (campus dans le même secteur)
   rappelMinutes: 30, // délai du rappel avant le début du cours
   seuilAlerteQuota: 90, // % de progression déclenchant l'alerte "quota proche"
   autoFait: true, // marquer automatiquement "effectuée" une séance passée
   enseignant: 'Elias Badji',
+  delaiRemiseNotesJours: 14, // délai pour remettre les notes après une évaluation
+  delaiPaiementJours: 30, // au-delà, une facture non réglée passe « en retard »
+  trajets: {}, // minutes de trajet par paire d'écoles (clé lib/conflicts.js → cleTrajet), prioritaires sur trajetMinutes
   conflitsIgnores: [], // conflits de trajet tolérés (clés de lib/conflicts.js → clePaire)
 }
 

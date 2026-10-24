@@ -5,6 +5,7 @@ import { fcfa, pourPdf } from './money'
 import { formatDuree, jourLabel, moisLabel } from './dates'
 import { heuresDe, montantDe } from './stats'
 import { libelleClasses } from './classes'
+import { estEvaluation, typeSeance } from './evaluations'
 
 const INDIGO = [79, 70, 229]
 const ARDOISE = [100, 116, 139]
@@ -140,7 +141,7 @@ export function pdfRecapMensuel(recap, { ecolesById, enseignant, precedent, paie
       formatDuree(e.heuresFaites),
       String(e.nb),
       fcfa(e.montant),
-      p?.statut === 'paye' ? 'Payé' : 'En attente',
+      p?.statut === 'paye' ? 'Payé' : p?.statut === 'facture' ? `Facturé ${p.numeroFacture || ''}`.trim() : 'À facturer',
     ].map(T)
   })
 
@@ -216,7 +217,7 @@ export function pdfRecapMensuel(recap, { ecolesById, enseignant, precedent, paie
         jourLabel(s.date, 'dd/MM'),
         `${s.debut}–${s.fin}`,
         m?.code || '—',
-        m?.nom || '—',
+        s.numero ? `${m?.nom || '—'} (S${s.numero.rang}/${s.numero.total})` : m?.nom || '—',
         s.mode === 'ligne' ? 'En ligne' : 'Présentiel',
         s.statut === 'fait' ? 'Effectuée' : 'Planifiée',
         fcfa(montantDe(s)),
@@ -248,4 +249,91 @@ export async function partagerOuTelecharger(doc, nomFichier, titre) {
   }
   doc.save(nomFichier)
   return 'telecharge'
+}
+
+/** Cahier de textes d'une matière : une ligne par séance, dans l'ordre chronologique. */
+export function pdfCahierTextes(matiere, seances, { enseignant }) {
+  const doc = nouveauDoc()
+  const sousTitre = [matiere.ecole?.nom || matiere.ecole?.code, matiere.niveau, libelleClasses(matiere), `${formatDuree(Number(matiere.volumeHoraire) || 0)} prévues`]
+    .filter(Boolean)
+    .join(' · ')
+  entete(doc, `Cahier de textes — ${matiere.nom}`, sousTitre, enseignant)
+  let cumul = 0
+  autoTable(doc, {
+    startY: 34,
+    head: [['N°', 'Date', 'Horaire', 'Contenu traité', 'Travail donné', 'Cumul']],
+    body: seances.map((s, i) => {
+      cumul += heuresDe(s)
+      return [
+        `S${i + 1}`,
+        jourLabel(s.date, 'dd/MM/yy'),
+        `${s.debut}–${s.fin}`,
+        [estEvaluation(s) ? `[${typeSeance(s.typeSeance).label}]` : '', s.contenuRealise || s.contenuPrevu || (s.statut === 'fait' ? '—' : '(à venir)')].filter(Boolean).join(' '),
+        s.travailDonne || '—',
+        formatDuree(cumul),
+      ].map(T)
+    }),
+    styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2, valign: 'top' },
+    headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+    columnStyles: { 0: { cellWidth: 11 }, 1: { cellWidth: 18 }, 2: { cellWidth: 22 }, 5: { cellWidth: 16, halign: 'right' } },
+  })
+  const y = doc.lastAutoTable.finalY + 18
+  doc.setFontSize(9)
+  doc.text(T("Signature de l'enseignant"), 14, y)
+  doc.text(T('Visa de la direction pédagogique'), 196, y, { align: 'right' })
+  piedDePage(doc)
+  return doc
+}
+
+/** Facture mensuelle d'une école : une ligne par matière (heures × taux), puis le détail des séances. */
+export function pdfFacture(recap, ecole, { numero, dateFacture, echeance, enseignant }) {
+  const doc = nouveauDoc()
+  entete(doc, `Facture ${numero}`, `${ecole.nom} · enseignements de ${moisLabel(recap.mois)}`, enseignant)
+  const seances = recap.seances.filter((s) => recap.parMatiere.find((m) => m.matiereId === s.matiereId)?.ecoleId === ecole.id)
+
+  doc.setFontSize(9.5)
+  doc.text(T(`Émise le ${jourLabel(dateFacture, 'dd/MM/yyyy')}`), 14, 36)
+  if (echeance) doc.text(T(`À régler avant le ${jourLabel(echeance, 'dd/MM/yyyy')}`), 14, 41)
+  doc.text(T(`Destinataire : ${ecole.nom}`), 196, 36, { align: 'right' })
+
+  const lignes = new Map()
+  for (const s of seances) {
+    const m = recap.parMatiere.find((x) => x.matiereId === s.matiereId)
+    const cle = `${s.matiereId}|${s.tauxHoraire}`
+    if (!lignes.has(cle)) lignes.set(cle, { libelle: [m?.nom, m?.niveau, libelleClasses(m)].filter(Boolean).join(' · '), taux: s.tauxHoraire || 0, heures: 0, nb: 0 })
+    const l = lignes.get(cle)
+    l.heures += heuresDe(s)
+    l.nb += 1
+  }
+  const total = seances.reduce((t, s) => t + montantDe(s), 0)
+  autoTable(doc, {
+    startY: 48,
+    head: [['Désignation', 'Séances', 'Heures', 'Taux horaire', 'Montant']],
+    body: [...lignes.values()].map((l) => [l.libelle, l.nb, formatDuree(l.heures), fcfa(l.taux), fcfa(l.heures * l.taux)].map(T)),
+    foot: [['Total à payer', '', formatDuree(seances.reduce((t, s) => t + heuresDe(s), 0)), '', fcfa(total)].map(T)],
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.2 },
+    headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+    footStyles: { fillColor: [238, 242, 255], textColor: [15, 23, 42], fontStyle: 'bold' },
+    columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+  })
+
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 8,
+    head: [['Date', 'Horaire', 'Matière', 'Durée', 'Montant']],
+    body: seances.map((s) => {
+      const m = recap.parMatiere.find((x) => x.matiereId === s.matiereId)
+      return [jourLabel(s.date, 'dd/MM'), `${s.debut}–${s.fin}`, s.numero ? `${m?.nom} (S${s.numero.rang})` : m?.nom, formatDuree(heuresDe(s)), fcfa(montantDe(s))].map(T)
+    }),
+    styles: { font: 'helvetica', fontSize: 8, cellPadding: 1.6 },
+    headStyles: { fillColor: [100, 116, 139], textColor: 255 },
+    columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' } },
+  })
+
+  const y = doc.lastAutoTable.finalY + 16
+  doc.setFontSize(9)
+  doc.text(T(`Arrêtée à la somme de ${fcfa(total)}.`), 14, y)
+  doc.text(T(enseignant || ''), 196, y + 8, { align: 'right' })
+  doc.text(T('Signature'), 196, y + 14, { align: 'right' })
+  piedDePage(doc)
+  return doc
 }

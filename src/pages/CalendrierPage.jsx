@@ -97,11 +97,22 @@ export default function CalendrierPage({ params, referentiel, seances }) {
 
   const surDeplacement = async (info) => {
     const { start, end } = info.event
-    await deplacerSeance(Number(info.event.id), {
-      date: toISO(start),
-      debut: format(start, 'HH:mm'),
-      fin: format(end || start, 'HH:mm'),
-    })
+    const fin = end || start
+    // Une séance ne peut pas déborder sur le jour suivant (fin calculée en heures du jour).
+    if (toISO(fin) !== toISO(start) && format(fin, 'HH:mm') !== '00:00') {
+      info.revert()
+      return toast('Une séance doit commencer et finir le même jour', 'erreur')
+    }
+    try {
+      await deplacerSeance(Number(info.event.id), {
+        date: toISO(start),
+        debut: format(start, 'HH:mm'),
+        fin: format(fin, 'HH:mm') === '00:00' && toISO(fin) !== toISO(start) ? '23:59' : format(fin, 'HH:mm'),
+      })
+    } catch {
+      info.revert()
+      return toast('Déplacement non enregistré (connexion ?) : la séance reprend sa place', 'erreur')
+    }
     if (Number(info.event.id) === copieId) setCopieId(null)
     toast('Séance déplacée', 'info')
   }

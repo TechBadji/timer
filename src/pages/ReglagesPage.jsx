@@ -364,7 +364,8 @@ export default function ReglagesPage({ referentiel, seances }) {
                 if (!f) return
                 setConfirmation({
                   titre: 'Restaurer cette sauvegarde ?',
-                  texte: 'Toutes les données actuelles de cet appareil seront remplacées par le contenu du fichier.',
+                  texte:
+                    'Toutes vos données (sur tous vos appareils) seront remplacées par le contenu du fichier. Une copie de l’état actuel sera d’abord téléchargée.',
                   confirmer: 'Restaurer',
                   danger: true,
                   onConfirmer: async () => {

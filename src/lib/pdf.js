@@ -6,6 +6,7 @@ import { formatDuree, jourLabel, moisLabel } from './dates'
 import { heuresDe, montantDe } from './stats'
 import { libelleClasses } from './classes'
 import { estEvaluation, typeSeance } from './evaluations'
+import { seancesFacturables } from './facturation'
 
 const INDIGO = [79, 70, 229]
 const ARDOISE = [100, 116, 139]
@@ -289,7 +290,7 @@ export function pdfCahierTextes(matiere, seances, { enseignant }) {
 export function pdfFacture(recap, ecole, { numero, dateFacture, echeance, enseignant }) {
   const doc = nouveauDoc()
   entete(doc, `Facture ${numero}`, `${ecole.nom} · enseignements de ${moisLabel(recap.mois)}`, enseignant)
-  const seances = recap.seances.filter((s) => recap.parMatiere.find((m) => m.matiereId === s.matiereId)?.ecoleId === ecole.id)
+  const seances = seancesFacturables(recap.seances).filter((s) => recap.parMatiere.find((m) => m.matiereId === s.matiereId)?.ecoleId === ecole.id)
 
   doc.setFontSize(9.5)
   doc.text(T(`Émise le ${jourLabel(dateFacture, 'dd/MM/yyyy')}`), 14, 36)

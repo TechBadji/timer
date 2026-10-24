@@ -287,3 +287,23 @@ console.log('\nTous les tests de logique passent.')
   assert.deepEqual(supportsDeSeance(sup, 10, 2).map((x) => x.id), [1, 2])
   console.log('✓ supports')
 }
+
+/* ---- audit : facturation des seules séances effectuées ---- */
+{
+  const { seancesFacturables, ecartFacture } = await import('../src/lib/facturation.js')
+  const lot = [
+    s(1, 10, '2026-10-01', '08:00', '10:00', 'presentiel', 'fait', 10000),
+    s(2, 10, '2026-10-29', '08:00', '10:00', 'presentiel', 'planifie', 10000),
+  ]
+  assert.deepEqual(seancesFacturables(lot).map((x) => x.id), [1])
+  const r = construireRecap('2026-10', lot, ctx)
+  const [e] = r.parEcole
+  assert.equal(e.montant, 40000, 'le récap prévoit toujours effectué + planifié')
+  assert.equal(e.montantFait, 20000, 'mais seul l’effectué se facture')
+  assert.equal(e.nbFaites, 1)
+  assert.equal(ecartFacture({ statut: 'facture', montant: 20000 }, 20000), 0)
+  assert.equal(ecartFacture({ statut: 'facture', montant: 20000 }, 40000), 20000, 'séance effectuée après facturation')
+  assert.equal(ecartFacture({ statut: 'en_attente', montant: 0 }, 40000), 0, 'pas encore facturé : rien à signaler')
+  assert.equal(ecartFacture(undefined, 40000), 0)
+  console.log('✓ facturation des séances effectuées')
+}

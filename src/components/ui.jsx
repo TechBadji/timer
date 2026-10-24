@@ -132,6 +132,24 @@ export const Bandeau = ({ ton = 'alerte', titre, children }) => {
 const ToastCtx = createContext(() => {})
 export const useToast = () => useContext(ToastCtx)
 
+/**
+ * Filet de sécurité : toute écriture qui échoue sans être interceptée (réseau coupé,
+ * refus de la base…) est signalée, au lieu d'échouer en silence.
+ */
+export function SignalerErreurs() {
+  const toast = useToast()
+  useEffect(() => {
+    const surRejet = (e) => {
+      const message = e.reason?.message || String(e.reason || '')
+      const reseau = /fetch|network|réseau|load failed/i.test(message)
+      toast(reseau ? 'Connexion impossible : la modification n’a pas été enregistrée' : `Échec de l’enregistrement : ${message}`, 'erreur')
+    }
+    window.addEventListener('unhandledrejection', surRejet)
+    return () => window.removeEventListener('unhandledrejection', surRejet)
+  }, [toast])
+  return null
+}
+
 export function FournisseurToast({ children }) {
   const [messages, setMessages] = useState([])
   const toast = useCallback((texte, ton = 'succes') => {

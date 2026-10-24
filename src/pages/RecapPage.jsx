@@ -5,7 +5,7 @@ import { aujourdhui, formatDuree, moisCourant, moisLabel, moisLabelCourt, moisPr
 import { fcfa, fcfaCourt } from '../lib/money'
 import { basculerPaiement } from '../data/repo'
 import { usePaiements } from '../data/queries'
-import { etatFacture, facturesEnRetard, numeroFacture, texteRelance } from '../lib/facturation'
+import { ecartFacture, etatFacture, facturesEnRetard, numeroFacture, texteRelance } from '../lib/facturation'
 import { Statistique, Vide, Puce, useToast, Modale, Bandeau } from '../components/ui'
 import { IconeGraphique, IconeChevronGauche, IconeChevronDroite, IconePartage, IconeArchive } from '../components/icons'
 
@@ -32,15 +32,20 @@ export default function RecapPage({ referentiel, seances }) {
   const retards = useMemo(() => facturesEnRetard(paiements, delai, aujourdhui()), [paiements, delai])
 
   async function facturer(e) {
+    if (!e.nbFaites) return toast(`Aucune séance effectuée pour ${e.code} ce mois-ci`, 'erreur')
     const ecole = ecolesById.get(e.ecoleId)
     const numero = numeroFacture(ecole, mois)
     const dateFacture = paiementsParEcole.get(e.ecoleId)?.dateFacture || aujourdhui()
-    await basculerPaiement(e.ecoleId, mois, 'facture', e.montant, { numeroFacture: numero, dateFacture })
+    await basculerPaiement(e.ecoleId, mois, 'facture', e.montantFait, { numeroFacture: numero, dateFacture })
     const { pdfFacture, partagerOuTelecharger } = await import('../lib/pdf')
     const { echeance } = etatFacture({ statut: 'facture', dateFacture }, delai, aujourdhui())
     const doc = pdfFacture(recap, ecole, { numero, dateFacture, echeance, enseignant: reglages.enseignant })
     const res = await partagerOuTelecharger(doc, `facture-${numero}.pdf`, `Facture ${numero}`)
-    toast(res === 'partage' ? `Facture ${numero} partagée` : `Facture ${numero} téléchargée`)
+    const reste = e.nb - e.nbFaites
+    toast(
+      `Facture ${numero} ${res === 'partage' ? 'partagée' : 'téléchargée'}` +
+        (reste ? ` — ${reste} séance(s) planifiée(s) non incluse(s)` : '')
+    )
   }
 
   async function relancer(p) {
@@ -239,7 +244,8 @@ export default function RecapPage({ referentiel, seances }) {
                 }
                 const [libelle, classes] = puces[f.etat]
                 const changer = async (statut, message) => {
-                  await basculerPaiement(e.ecoleId, mois, statut, e.montant, { numeroFacture: p?.numeroFacture, dateFacture: p?.dateFacture })
+                  // Le montant reste celui de la facture émise.
+                  await basculerPaiement(e.ecoleId, mois, statut, p?.montant ?? e.montantFait, { numeroFacture: p?.numeroFacture, dateFacture: p?.dateFacture })
                   toast(message, statut === 'paye' ? 'succes' : 'info')
                 }
                 return (
@@ -250,10 +256,17 @@ export default function RecapPage({ referentiel, seances }) {
                         {e.code} <span className={`ml-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold ${classes}`}>{libelle}</span>
                       </p>
                       <p className="text-[12px] tabular text-ink-500">
-                        {formatDuree(e.heures)} · {e.nb} séance{e.nb > 1 ? 's' : ''} · {fcfa(e.montant)}
+                        {formatDuree(e.heuresFaites)} · {e.nbFaites} séance{e.nbFaites > 1 ? 's' : ''} effectuée{e.nbFaites > 1 ? 's' : ''} · {fcfa(e.montantFait)}
+                        {e.nb > e.nbFaites && ` · + ${e.nb - e.nbFaites} planifiée(s)`}
                         {p?.numeroFacture && f.etat !== 'a_facturer' && ` · ${p.numeroFacture}`}
                         {f.echeance && f.etat === 'facturee' && ` · échéance ${f.echeance.split('-').reverse().join('/')}`}
                       </p>
+                      {ecartFacture(p, e.montantFait) !== 0 && (
+                        <p className="text-[11.5px] font-semibold text-amber-700">
+                          ⚠ Facture de {fcfa(p.montant)}, séances effectuées : {fcfa(e.montantFait)}
+                          {f.etat !== 'payee' && ' — régénérez le PDF pour la corriger'}
+                        </p>
+                      )}
                     </div>
                     <div className="flex shrink-0 gap-1.5">
                       {f.etat === 'a_facturer' && (

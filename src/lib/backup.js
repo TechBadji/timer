@@ -1,7 +1,7 @@
 // Export / import complet, en plus de la base Supabase elle-même (qui est déjà
 // sauvegardée côté serveur). Utile pour changer de compte ou garder une copie
 // hors ligne.
-import { supabase, versObjets, versLigne } from '../data/supabase'
+import { supabase, versObjets, versLigne, leverSiErreur } from '../data/supabase'
 import { normaliserUrl, urlValide } from './supports'
 
 const TABLES = ['ecoles', 'matieres', 'tarifs', 'seances', 'paiements', 'reglages', 'supports']
@@ -24,15 +24,15 @@ export async function exporterJSON() {
   return contenu
 }
 
-export async function telechargerSauvegarde() {
+export async function telechargerSauvegarde(suffixe = '') {
   const contenu = await exporterJSON()
   const blob = new Blob([JSON.stringify(contenu, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `timer-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`
+  a.download = `timer-sauvegarde-${new Date().toISOString().slice(0, 10)}${suffixe}.json`
   a.click()
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
   return contenu
 }
 
@@ -41,7 +41,22 @@ export async function importerSauvegarde(fichier) {
   const texte = await fichier.text()
   const donnees = JSON.parse(texte)
   if (donnees?.app !== 'timer' || !donnees.tables) throw new Error('Fichier de sauvegarde non reconnu')
-  return importerDonnees(donnees)
+
+  // Filet de sécurité : copie de l'état actuel, téléchargée et gardée en mémoire,
+  // pour revenir en arrière si la restauration échoue à mi-parcours.
+  const avant = await telechargerSauvegarde('-avant-restauration')
+  try {
+    return await importerDonnees(donnees)
+  } catch (err) {
+    try {
+      await importerDonnees(avant)
+    } catch {
+      throw new Error(
+        `Restauration interrompue (${err.message}) et retour arrière impossible : restaurez le fichier « …-avant-restauration.json » téléchargé.`
+      )
+    }
+    throw new Error(`Restauration annulée (${err.message}) : vos données d'avant sont rétablies.`)
+  }
 }
 
 /**
@@ -54,12 +69,12 @@ export async function importerDonnees(donnees) {
 
   // Ordre des tables pour respecter les clés étrangères : écoles avant matières,
   // matières avant séances. reglages n'a pas d'id auto : upsert sur (user_id, cle).
-  await supabase.from('seances').delete().eq('user_id', user_id)
-  await supabase.from('supports').delete().eq('user_id', user_id)
-  await supabase.from('paiements').delete().eq('user_id', user_id)
-  await supabase.from('tarifs').delete().eq('user_id', user_id)
-  await supabase.from('matieres').delete().eq('user_id', user_id)
-  await supabase.from('ecoles').delete().eq('user_id', user_id)
+  leverSiErreur(await supabase.from('seances').delete().eq('user_id', user_id))
+  leverSiErreur(await supabase.from('supports').delete().eq('user_id', user_id))
+  leverSiErreur(await supabase.from('paiements').delete().eq('user_id', user_id))
+  leverSiErreur(await supabase.from('tarifs').delete().eq('user_id', user_id))
+  leverSiErreur(await supabase.from('matieres').delete().eq('user_id', user_id))
+  leverSiErreur(await supabase.from('ecoles').delete().eq('user_id', user_id))
 
   const correspondanceEcoles = new Map()
   const correspondanceMatieres = new Map()

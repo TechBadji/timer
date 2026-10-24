@@ -1,5 +1,9 @@
 import { useState } from 'react'
 import { creerCompte, connecter } from '../lib/auth'
+
+// Outil personnel : création de compte masquée, sauf VITE_INSCRIPTIONS_OUVERTES=true.
+// À doubler côté Supabase (Authentication → « Allow new users to sign up » désactivé).
+const INSCRIPTIONS_OUVERTES = import.meta.env.VITE_INSCRIPTIONS_OUVERTES === 'true'
 import { Champ, Saisie, Bandeau } from '../components/ui'
 import { IconeCheck } from '../components/icons'
 
@@ -78,16 +82,18 @@ export default function LoginPage({ onConnecte }) {
           </button>
         </form>
 
-        <button
-          className="mt-3 w-full text-center text-[13px] font-semibold text-brand-600"
-          onClick={() => {
-            setInscription((v) => !v)
-            setErreur('')
-            setInfo('')
-          }}
-        >
-          {inscription ? 'J’ai déjà un compte — me connecter' : 'Pas encore de compte — en créer un'}
-        </button>
+        {INSCRIPTIONS_OUVERTES && (
+          <button
+            className="mt-3 w-full text-center text-[13px] font-semibold text-brand-600"
+            onClick={() => {
+              setInscription((v) => !v)
+              setErreur('')
+              setInfo('')
+            }}
+          >
+            {inscription ? 'J’ai déjà un compte — me connecter' : 'Pas encore de compte — en créer un'}
+          </button>
+        )}
 
         <p className="mt-4 text-center text-[11.5px] leading-relaxed text-ink-400">
           Vos données sont stockées sur votre base Supabase, accessibles depuis tous vos appareils.

@@ -5,7 +5,7 @@ import { synchroniserSeancesPassees } from './data/repo'
 import { useReferentiel, useSeances } from './data/queries'
 import { planifierRappels, permissionNotifications } from './lib/notifications'
 import { sessionActuelle, onChangementSession, fermerSession } from './lib/auth'
-import { FournisseurToast } from './components/ui'
+import { FournisseurToast, SignalerErreurs } from './components/ui'
 import LoginPage from './pages/LoginPage'
 // Chaque écran est un chunk séparé : FullCalendar et Recharts ne sont
 // téléchargés que lorsqu'on ouvre l'écran correspondant.
@@ -85,6 +85,7 @@ export default function App() {
 
   return (
     <FournisseurToast>
+      <SignalerErreurs />
       <div className="flex min-h-full flex-col">
         <main className={`mx-auto w-full flex-1 pb-[calc(5rem+var(--safe-bottom))] ${largeur}`}>
           <ProchainCours seances={seances} referentiel={referentiel} />

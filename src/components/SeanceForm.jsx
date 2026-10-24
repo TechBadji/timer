@@ -69,9 +69,10 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
   const supportsSeance = matiere ? supportsDeSeance(supports, matiere.id, rang) : []
   const ecole = ecolesById.get(matiere?.ecoleId)
   const creneau = f.debut ? creneauDe(f.debut, reglages.heureDebutSoir) : 'jour'
-  const taux =
-    seance?.tauxHoraire ??
-    (matiere ? tauxCreneau(tauxParCle.get(`${matiere.ecoleId}|${matiere.niveau}`) ?? 0, ecole?.majorationSoir, creneau) : 0)
+  const tauxGrille = matiere ? tauxCreneau(tauxParCle.get(`${matiere.ecoleId}|${matiere.niveau}`) ?? 0, ecole?.majorationSoir, creneau) : 0
+  // Taux figé à la création, sauf si la séance change de matière : elle prend alors celui de la nouvelle.
+  const changeDeMatiere = !!seance && Number(f.matiereId) !== Number(seance.matiereId)
+  const taux = seance && !changeDeMatiere ? seance.tauxHoraire : tauxGrille
   const duree = f.debut && f.fin ? dureeHeures(f.debut, f.fin) : 0
   const montant = duree * taux
 
@@ -157,6 +158,7 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
     if (seance) {
       await majSeance(seance.id, {
         matiereId: Number(f.matiereId),
+        tauxHoraire: changeDeMatiere ? tauxGrille : undefined,
         date: f.date,
         debut: f.debut,
         fin: f.fin,
@@ -300,7 +302,7 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
               ))}
               <Puce className={creneau === 'soir' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'}>
                 {creneau === 'soir' ? 'Soir' : 'Jour'}
-                {creneau === 'soir' && !seance && Number(ecole?.majorationSoir) > 0 && ` +${ecole.majorationSoir} %`}
+                {creneau === 'soir' && (!seance || changeDeMatiere) && Number(ecole?.majorationSoir) > 0 && ` +${ecole.majorationSoir} %`}
               </Puce>
               <span className="ml-auto text-[12px] font-semibold tabular text-ink-600">
                 {taux ? `${taux.toLocaleString('fr-FR')} FCFA/h` : 'Taux non défini'}

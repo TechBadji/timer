@@ -41,7 +41,7 @@ export function progression(matiere, seances, seuilAlerte = 90) {
 }
 
 const cumul = (map, cle, base, s) => {
-  if (!map.has(cle)) map.set(cle, { ...base, heures: 0, heuresFaites: 0, heuresPlanifiees: 0, montant: 0, montantFait: 0, nb: 0 })
+  if (!map.has(cle)) map.set(cle, { ...base, heures: 0, heuresFaites: 0, heuresPlanifiees: 0, montant: 0, montantFait: 0, nb: 0, nbFaites: 0 })
   const e = map.get(cle)
   const h = heuresDe(s)
   const m = montantDe(s)
@@ -51,6 +51,7 @@ const cumul = (map, cle, base, s) => {
   if (s.statut === 'fait') {
     e.heuresFaites += h
     e.montantFait += m
+    e.nbFaites += 1
   } else {
     e.heuresPlanifiees += h
   }

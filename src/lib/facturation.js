@@ -5,6 +5,18 @@ import { fcfa } from './money'
 /** Numéro lisible et stable : CODE-AAAAMM (une facture par école et par mois). */
 export const numeroFacture = (ecole, mois) => `${String(ecole?.code || 'ECOLE').toUpperCase()}-${mois.replace('-', '')}`
 
+/** Seules les séances effectuées se facturent. */
+export const seancesFacturables = (seances) => seances.filter((s) => s.statut === 'fait')
+
+/**
+ * Écart entre le montant d'une facture émise et les séances effectuées du mois
+ * (séance ajoutée, annulée ou modifiée après coup). 0 si rien à signaler.
+ */
+export const ecartFacture = (paiement, montantFait) =>
+  paiement && paiement.statut !== 'en_attente' && Math.abs((Number(paiement.montant) || 0) - montantFait) >= 1
+    ? montantFait - (Number(paiement.montant) || 0)
+    : 0
+
 /** Date limite de paiement d'une facture émise. */
 export const echeance = (dateFacture, delaiJours) => (dateFacture ? decalerJours(dateFacture, delaiJours) : null)
 

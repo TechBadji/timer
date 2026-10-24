@@ -7,6 +7,8 @@ import { changerStatutMatiere, supprimerMatiere } from '../data/repo'
 import { Vide, Puce, Progression, useToast, Confirmation, Modale, Bandeau } from '../components/ui'
 import { IconePlus, IconeLivre, IconeCrayon, IconePoubelle, IconeArchive, IconeCheck } from '../components/icons'
 import MatiereForm from '../components/MatiereForm'
+import SupportsMatiere from '../components/Supports'
+import { useSupports } from '../data/queries'
 
 export default function MatieresPage({ referentiel, seances }) {
   const { ecoles, matieres, ecolesById, tauxParCle, reglages } = referentiel
@@ -241,6 +243,7 @@ function CarteMatiere({ m, onEditer, onDetail, onArchiver, onSupprimer }) {
 
 function DetailMatiere({ matiere, seances, enseignant, onFermer }) {
   const toast = useToast()
+  const supports = useSupports()
   if (!matiere) return null
   const siennes = seances
     .filter((s) => s.matiereId === matiere.id && s.statut !== 'annule')
@@ -312,6 +315,8 @@ function DetailMatiere({ matiere, seances, enseignant, onFermer }) {
           ))}
         </ul>
       )}
+
+      <SupportsMatiere matiere={matiere} supports={supports} nbSeances={numeros.get(siennes[0]?.id)?.total || 0} />
     </Modale>
   )
 }

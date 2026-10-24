@@ -7,6 +7,7 @@ import { creneauDe, tauxCreneau } from '../lib/creneau'
 import { REGLAGES_DEFAUT } from './constants'
 import { dureeHeures, decalerSemaines, estPasse } from '../lib/dates'
 import { analyserClasses } from '../lib/classes'
+import { normaliserUrl, titreDepuisUrl, typeSupport, urlValide } from '../lib/supports'
 
 const nettoyer = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
 
@@ -247,6 +248,24 @@ export async function basculerPaiement(ecoleId, mois, statut, montant, { numeroF
       { onConflict: 'user_id,ecole_id,mois' }
     )
   )
+}
+
+/* --------------------------------- Supports -------------------------------- */
+
+export async function creerSupport({ matiereId, titre, url, rang }) {
+  const user_id = await utilisateurId()
+  const lien = normaliserUrl(url)
+  if (!urlValide(lien)) throw new Error('Adresse invalide (http ou https)')
+  leverSiErreur(
+    await supabase.from('supports').insert({
+      ...versLigne({ matiereId: Number(matiereId), titre: titre.trim() || titreDepuisUrl(lien), url: lien, type: typeSupport(lien), rang: rang ? Number(rang) : null }),
+      user_id,
+    })
+  )
+}
+
+export async function supprimerSupport(id) {
+  leverSiErreur(await supabase.from('supports').delete().eq('id', id))
 }
 
 /* ---------------------------------- Divers ---------------------------------- */

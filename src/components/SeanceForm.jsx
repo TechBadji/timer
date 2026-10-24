@@ -4,7 +4,10 @@ import { creerSeance, dupliquerSeance, majSeance, supprimerSeance, supprimerSeri
 import { conflitsDe } from '../lib/conflicts'
 import { dureeHeures, enHeure, enMinutes, formatDuree, jourLabel } from '../lib/dates'
 import { fcfa } from '../lib/money'
-import { progression } from '../lib/stats'
+import { progression, numeroterSeances, libelleRang } from '../lib/stats'
+import { supportsDeSeance } from '../lib/supports'
+import { useSupports } from '../data/queries'
+import { LienSupport } from './Supports'
 import { libelleClasses } from '../lib/classes'
 import { creneauDe, tauxCreneau } from '../lib/creneau'
 import { TYPES_SEANCE, estEvaluation } from '../lib/evaluations'
@@ -60,7 +63,10 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
     }
   }, [ouvert, seance, defauts])
 
+  const supports = useSupports()
   const matiere = matieresById.get(Number(f.matiereId))
+  const rang = seance ? numeroterSeances(seances, matieresById).get(seance.id)?.rang : null
+  const supportsSeance = matiere ? supportsDeSeance(supports, matiere.id, rang) : []
   const ecole = ecolesById.get(matiere?.ecoleId)
   const creneau = f.debut ? creneauDe(f.debut, reglages.heureDebutSoir) : 'jour'
   const taux =
@@ -390,6 +396,19 @@ export default function SeanceForm({ ouvert, onFermer, seance, defauts, referent
                   </span>
                 </div>
               )}
+            </div>
+          )}
+
+          {supportsSeance.length > 0 && (
+            <div className="rounded-xl border border-ink-100 px-3 py-2">
+              <p className="mb-1 text-[13px] font-semibold text-ink-700">Supports{rang ? ` · ${libelleRang(rang)}` : ''}</p>
+              <ul className="space-y-1 text-[13px]">
+                {supportsSeance.map((s) => (
+                  <li key={s.id} className="flex">
+                    <LienSupport support={s}>{s.rang == null && <span className="text-[11px] font-normal text-ink-400">· toute la matière</span>}</LienSupport>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

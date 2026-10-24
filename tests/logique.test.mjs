@@ -264,3 +264,26 @@ console.log('\nTous les tests de logique passent.')
   assert.equal(u.totaux.nbSeances, 3)
   console.log('✓ bilan annuel')
 }
+
+/* ---- supports ---- */
+{
+  const { typeSupport, normaliserUrl, urlValide, titreDepuisUrl, grouperSupports, supportsDeSeance } = await import('../src/lib/supports.js')
+  assert.equal(normaliserUrl('github.com/x/y'), 'https://github.com/x/y')
+  assert.equal(urlValide('javascript:alert(1)'), false)
+  assert.equal(urlValide('drive.google.com/file/d/abc'), true)
+  assert.equal(typeSupport('https://github.com/x/tp-routage'), 'code')
+  assert.equal(typeSupport('https://docs.google.com/presentation/d/1/edit'), 'slides')
+  assert.equal(typeSupport('https://youtu.be/abc'), 'video')
+  assert.equal(typeSupport('https://exemple.sn/cours.pdf'), 'doc')
+  assert.equal(titreDepuisUrl('https://github.com/x/tp-routage'), 'tp-routage')
+  assert.equal(titreDepuisUrl('https://docs.google.com/presentation/d/1/edit'), 'docs.google.com')
+  const sup = [
+    { id: 1, matiereId: 10, rang: 2, titre: 'TP2' },
+    { id: 2, matiereId: 10, rang: null, titre: 'Plan de cours' },
+    { id: 3, matiereId: 10, rang: 1, titre: 'Intro' },
+    { id: 4, matiereId: 11, rang: 1, titre: 'Autre' },
+  ]
+  assert.deepEqual(grouperSupports(sup, 10).map((g) => [g.rang, g.supports.map((x) => x.id)]), [[null, [2]], [1, [3]], [2, [1]]])
+  assert.deepEqual(supportsDeSeance(sup, 10, 2).map((x) => x.id), [1, 2])
+  console.log('✓ supports')
+}

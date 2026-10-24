@@ -52,6 +52,8 @@ export const usePaiements = () => useTable('paiements')
 
 export const useSeances = () => useTable('seances')
 
+export const useSupports = () => useTable('supports')
+
 export function useReglages() {
   const [reglages, setReglages] = useState(REGLAGES_DEFAUT)
   useEffect(() => {

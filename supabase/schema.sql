@@ -86,6 +86,20 @@ create table paiements (
   unique (user_id, ecole_id, mois)
 );
 
+/* --------------------------------- Supports --------------------------------- */
+-- rang : numéro de séance (1 = 1ère séance) ; null = support de toute la matière.
+create table supports (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users on delete cascade,
+  matiere_id bigint not null references matieres on delete cascade,
+  titre text not null,
+  url text not null check (url ~* '^https?://'),
+  type text not null default 'lien',
+  rang int,
+  cree_le timestamptz not null default now()
+);
+create index supports_matiere_idx on supports (matiere_id);
+
 /* --------------------------------- Réglages --------------------------------- */
 create table reglages (
   user_id uuid not null references auth.users on delete cascade,
@@ -101,6 +115,7 @@ alter table tarifs enable row level security;
 alter table seances enable row level security;
 alter table paiements enable row level security;
 alter table reglages enable row level security;
+alter table supports enable row level security;
 
 create policy "proprietaire" on ecoles for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "proprietaire" on matieres for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
@@ -108,6 +123,7 @@ create policy "proprietaire" on tarifs for all using (auth.uid() = user_id) with
 create policy "proprietaire" on seances for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "proprietaire" on paiements for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "proprietaire" on reglages for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "proprietaire" on supports for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 /* --------------------------- Amorçage à l'inscription ------------------------ */
 -- À la création d'un compte, on crée automatiquement les 6 écoles par défaut.
@@ -137,4 +153,4 @@ create trigger amorcer_nouvel_utilisateur
 /* ------------------------------- Temps réel --------------------------------- */
 -- Nécessaire pour que l'app se mette à jour automatiquement (multi-appareils)
 -- sans recharger la page.
-alter publication supabase_realtime add table ecoles, matieres, tarifs, seances, paiements, reglages;
+alter publication supabase_realtime add table ecoles, matieres, tarifs, seances, paiements, reglages, supports;

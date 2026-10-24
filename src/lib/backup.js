@@ -2,8 +2,9 @@
 // sauvegardée côté serveur). Utile pour changer de compte ou garder une copie
 // hors ligne.
 import { supabase, versObjets, versLigne } from '../data/supabase'
+import { normaliserUrl, urlValide } from './supports'
 
-const TABLES = ['ecoles', 'matieres', 'tarifs', 'seances', 'paiements', 'reglages']
+const TABLES = ['ecoles', 'matieres', 'tarifs', 'seances', 'paiements', 'reglages', 'supports']
 
 async function utilisateurId() {
   const {
@@ -54,6 +55,7 @@ export async function importerDonnees(donnees) {
   // Ordre des tables pour respecter les clés étrangères : écoles avant matières,
   // matières avant séances. reglages n'a pas d'id auto : upsert sur (user_id, cle).
   await supabase.from('seances').delete().eq('user_id', user_id)
+  await supabase.from('supports').delete().eq('user_id', user_id)
   await supabase.from('paiements').delete().eq('user_id', user_id)
   await supabase.from('tarifs').delete().eq('user_id', user_id)
   await supabase.from('matieres').delete().eq('user_id', user_id)
@@ -104,6 +106,19 @@ export async function importerDonnees(donnees) {
     if (error) throw new Error(error.message)
   }
   compte.seances = donnees.tables.seances?.length || 0
+
+  // Absente des sauvegardes antérieures à la bibliothèque de supports.
+  if (donnees.tables.supports?.length) {
+    // Un fichier de sauvegarde peut avoir été modifié : on ne garde que les liens http(s).
+    const lignes = donnees.tables.supports.filter((s) => urlValide(s.url)).map(({ id, matiereId, ...reste }) => ({
+      ...versLigne({ ...reste, url: normaliserUrl(reste.url) }),
+      matiere_id: correspondanceMatieres.get(matiereId),
+      user_id,
+    }))
+    const { error } = lignes.length ? await supabase.from('supports').insert(lignes) : { error: null }
+    if (error) throw new Error(error.message)
+  }
+  compte.supports = donnees.tables.supports?.length || 0
 
   if (donnees.tables.paiements?.length) {
     const lignes = donnees.tables.paiements.map(({ id, ecoleId, ...reste }) => ({

@@ -187,3 +187,24 @@ console.log('\nTous les tests de logique passent.')
   assert.deepEqual(l.map((x) => [x.seance.id, x.joursRestants]), [[1, -9], [2, 10]])
   console.log('✓ évaluations')
 }
+
+/* ---- export iCal ---- */
+{
+  const { construireIcs } = await import('../src/lib/ical.js')
+  const ics = construireIcs(
+    [
+      { ...s(1, 10, '2026-09-07', '08:00', '11:00'), lieu: 'Salle B2, campus', typeSeance: 'examen' },
+      { ...s(2, 11, '2026-09-08', '18:30', '20:30', 'presentiel', 'annule'), notes: 'x'.repeat(200) },
+    ],
+    ctx
+  )
+  assert.match(ics, /^BEGIN:VCALENDAR\r\n/)
+  assert.match(ics, /UID:seance-1@timer/)
+  assert.match(ics, /DTSTART:20260907T080000\r\nDTEND:20260907T110000/)
+  assert.match(ics, /SUMMARY:\[Examen\] Réseaux — /)
+  assert.match(ics, /LOCATION:Salle B2\\, campus/)
+  assert.match(ics, /UID:seance-2@timer[\s\S]*STATUS:CANCELLED/)
+  assert.ok(ics.split('\r\n').every((l) => new TextEncoder().encode(l).length <= 75), 'lignes repliées à 75 octets')
+  assert.equal(ics.match(/BEGIN:VEVENT/g).length, 2)
+  console.log('✓ export iCal')
+}

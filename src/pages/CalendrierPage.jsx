@@ -133,6 +133,28 @@ export default function CalendrierPage({ params, referentiel, seances }) {
     toast(res === 'partage' ? 'Emploi du temps partagé' : 'PDF téléchargé')
   }
 
+  // Séances à venir, annulées comprises : réimporter le fichier retire alors ces cours de l'agenda.
+  async function exporterAgenda() {
+    const aVenir = seances.filter((s) => s.date >= aujourdhui())
+    if (!aVenir.length) return toast('Aucune séance à venir à exporter', 'erreur')
+    const { construireIcs } = await import('../lib/ical')
+    const ics = construireIcs(aVenir, { matieresById, ecolesById, rappelMinutes: reglages.rappelMinutes })
+    const fichier = new File([ics], 'timer-cours.ics', { type: 'text/calendar' })
+    if (navigator.canShare?.({ files: [fichier] })) {
+      try {
+        await navigator.share({ files: [fichier], title: 'Mes cours' })
+        return
+      } catch (e) {
+        if (e?.name === 'AbortError') return
+      }
+    }
+    const url = URL.createObjectURL(fichier)
+    const a = Object.assign(document.createElement('a'), { href: url, download: fichier.name })
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    toast(`${aVenir.length} séance(s) exportée(s) — ouvrez le fichier pour l'ajouter à votre agenda`)
+  }
+
   async function lancerDuplication() {
     const { debut } = bornesSemaine(plage.debut)
     const n = await dupliquerSemaine(debut, Number(nbCopies))
@@ -165,6 +187,9 @@ export default function CalendrierPage({ params, referentiel, seances }) {
         </div>
         <button className="btn-secondaire px-2.5 py-2" onClick={() => setDupliquer(true)} title="Dupliquer la semaine">
           <IconeCopie />
+        </button>
+        <button className="btn-secondaire px-2.5 py-2" onClick={exporterAgenda} title="Ajouter à mon agenda (.ics)">
+          <IconeCalendrier />
         </button>
         <button className="btn-secondaire px-2.5 py-2" onClick={exporter} title="Exporter en PDF">
           <IconePartage />

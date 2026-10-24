@@ -1,16 +1,19 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend, Cell } from 'recharts'
 import { previsionnel, chargeHebdo } from '../lib/pilotage'
+import { bilanAnnuel } from '../lib/bilan'
+import { usePaiements } from '../data/queries'
 import { aujourdhui, formatDuree, jourLabel, moisCourant, moisLabelCourt } from '../lib/dates'
 import { fcfa, fcfaCourt } from '../lib/money'
-import { Statistique, Puce, Bandeau } from '../components/ui'
+import { Statistique, Puce, Bandeau, useToast } from '../components/ui'
+import { IconeChevronGauche, IconeChevronDroite, IconePartage } from '../components/icons'
 
 const COULEUR_ACQUIS = '#10b981'
 const COULEUR_PLANIFIE = '#6366f1'
 const COULEUR_ALERTE = '#e11d48'
 
 export default function PilotagePage({ referentiel, seances }) {
-  const { matieres, ecolesById, tauxParCle, reglages } = referentiel
+  const { matieres, ecolesById, matieresById, tauxParCle, reglages } = referentiel
   const maxHebdo = Number(reglages.chargeMaxHebdo) || 25
   const maxSoirs = Number(reglages.soireesConsecutivesMax) || 3
 
@@ -142,6 +145,126 @@ export default function PilotagePage({ referentiel, seances }) {
           </tbody>
         </table>
       </section>
+
+      <BilanAnnuel seances={seances} referentiel={{ matieresById, ecolesById, reglages }} />
     </div>
+  )
+}
+
+function BilanAnnuel({ seances, referentiel }) {
+  const { matieresById, ecolesById, reglages } = referentiel
+  const toast = useToast()
+  const paiements = usePaiements()
+  const [type, setType] = useState('civile')
+  const auj = aujourdhui()
+  // Année universitaire courante : celle qui a commencé en octobre dernier.
+  const anneeCourante = type === 'universitaire' && Number(auj.slice(5, 7)) < 10 ? Number(auj.slice(0, 4)) - 1 : Number(auj.slice(0, 4))
+  const [decalage, setDecalage] = useState(0)
+  const annee = anneeCourante + decalage
+  const bilan = useMemo(
+    () => bilanAnnuel(seances, paiements, { matieresById, ecolesById, annee, type, delaiJours: Number(reglages.delaiPaiementJours) || 30, aujourdhui: auj }),
+    [seances, paiements, matieresById, ecolesById, annee, type, reglages.delaiPaiementJours, auj]
+  )
+  const t = bilan.totaux
+
+  async function exporter() {
+    if (!bilan.ecoles.length) return toast('Aucune activité sur cette période', 'erreur')
+    const { pdfBilanAnnuel, partagerOuTelecharger } = await import('../lib/pdf')
+    const doc = pdfBilanAnnuel(bilan, { type, enseignant: reglages.enseignant })
+    const res = await partagerOuTelecharger(doc, `bilan-${bilan.label}.pdf`, `Bilan ${bilan.label}`)
+    toast(res === 'partage' ? 'Bilan partagé' : 'PDF téléchargé')
+  }
+
+  return (
+    <section className="carte overflow-hidden">
+      <div className="flex flex-wrap items-center gap-2 px-4 pt-4">
+        <h2 className="mr-auto text-[14px] font-bold text-ink-800">Bilan annuel</h2>
+        <div className="flex rounded-full bg-ink-100 p-0.5 text-[11.5px] font-semibold">
+          {[
+            ['civile', 'Civile'],
+            ['universitaire', 'Universitaire'],
+          ].map(([v, l]) => (
+            <button
+              key={v}
+              onClick={() => {
+                setType(v)
+                setDecalage(0)
+              }}
+              className={`rounded-full px-2.5 py-1 ${type === v ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500'}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        <button className="btn-secondaire px-2 py-1.5" onClick={() => setDecalage(decalage - 1)} aria-label="Année précédente">
+          <IconeChevronGauche size={16} />
+        </button>
+        <span className="min-w-[4.5rem] text-center text-[13px] font-bold tabular text-ink-800">{bilan.label}</span>
+        <button className="btn-secondaire px-2 py-1.5" onClick={() => setDecalage(decalage + 1)} aria-label="Année suivante" disabled={decalage >= 0}>
+          <IconeChevronDroite size={16} />
+        </button>
+        <button className="btn-secondaire px-2 py-1.5" onClick={exporter} title="Exporter en PDF">
+          <IconePartage size={16} />
+        </button>
+      </div>
+
+      {bilan.ecoles.length === 0 ? (
+        <p className="px-4 py-6 text-center text-[13px] text-ink-400">Aucune séance effectuée sur cette période.</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-2 px-4 pt-3 lg:grid-cols-4">
+            {[
+              ['Rémunération', fcfaCourt(t.montant), `${formatDuree(t.heures)} · ${t.nbSeances} séances`],
+              ['Taux moyen', fcfa(t.tauxMoyen), 'par heure effectuée'],
+              ['Encaissé', fcfaCourt(t.paye), `sur ${fcfaCourt(t.facture)} facturés`],
+              ['Reste à encaisser', fcfaCourt(t.resteAEncaisser), t.enRetard ? `${t.enRetard} facture(s) en retard` : 'aucun retard'],
+            ].map(([l, v, d]) => (
+              <div key={l} className="rounded-xl bg-ink-50 px-3 py-2">
+                <p className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-400">{l}</p>
+                <p className="text-[15px] font-bold tabular text-ink-900">{v}</p>
+                <p className="text-[11px] text-ink-500">{d}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full border-collapse text-[12.5px]">
+              <thead>
+                <tr className="bg-ink-50 text-[11px] uppercase tracking-wide text-ink-500">
+                  <th className="px-3 py-2 text-left font-semibold">École</th>
+                  <th className="px-2 py-2 text-right font-semibold">Heures</th>
+                  <th className="px-2 py-2 text-right font-semibold">Taux moyen</th>
+                  <th className="px-2 py-2 text-right font-semibold">Rémunération</th>
+                  <th className="px-2 py-2 text-right font-semibold">Reste dû</th>
+                  <th className="px-3 py-2 text-right font-semibold">Délai paiement</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100 tabular">
+                {bilan.ecoles.map((e) => (
+                  <tr key={e.ecoleId}>
+                    <td className="px-3 py-2">
+                      <Puce couleur={e.couleur}>{e.code}</Puce>
+                      <span className="ml-1.5 text-[11px] text-ink-400">
+                        {e.nbMatieres} mat. · {e.nbSeances} séances{e.nbAnnulees ? ` · ${e.nbAnnulees} annulée(s)` : ''}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 text-right text-ink-700">{formatDuree(e.heures)}</td>
+                    <td className="px-2 py-2 text-right text-ink-700">{fcfa(e.tauxMoyen)}</td>
+                    <td className="px-2 py-2 text-right font-semibold text-ink-800">{fcfa(e.montant)}</td>
+                    <td className={`px-2 py-2 text-right ${e.enRetard ? 'font-semibold text-rose-600' : 'text-ink-500'}`}>
+                      {e.resteAEncaisser ? fcfa(e.resteAEncaisser) : '—'}
+                      {e.enRetard > 0 && <span className="block text-[10.5px]">⚠ {e.enRetard} en retard</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right text-ink-500">{e.delaiMoyen === null ? '—' : `${e.delaiMoyen} j`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="px-4 py-3 text-[11.5px] text-ink-400">
+            Rémunération : séances effectuées sur la période. Délai de paiement : moyenne entre émission de la facture et règlement.
+          </p>
+        </>
+      )}
+    </section>
   )
 }

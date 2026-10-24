@@ -337,3 +337,42 @@ export function pdfFacture(recap, ecole, { numero, dateFacture, echeance, enseig
   piedDePage(doc)
   return doc
 }
+
+/** Bilan annuel : une ligne par école, puis les totaux. */
+export function pdfBilanAnnuel(bilan, { type, enseignant }) {
+  const doc = nouveauDoc()
+  const periode = type === 'universitaire' ? `Année universitaire ${bilan.label}` : `Année civile ${bilan.label}`
+  entete(doc, 'Bilan annuel', `${periode} · du ${jourLabel(bilan.debut, 'dd/MM/yyyy')} au ${jourLabel(bilan.fin, 'dd/MM/yyyy')}`, enseignant)
+  const t = bilan.totaux
+  autoTable(doc, {
+    startY: 34,
+    head: [['École', 'Séances', 'Heures', 'Taux moyen', 'Rémunération', 'Facturé', 'Payé', 'Reste', 'Délai moy.']],
+    body: bilan.ecoles.map((e) =>
+      [
+        e.code,
+        e.nbSeances,
+        formatDuree(e.heures),
+        fcfa(e.tauxMoyen),
+        fcfa(e.montant),
+        fcfa(e.facture),
+        fcfa(e.paye),
+        fcfa(e.resteAEncaisser),
+        e.delaiMoyen === null ? '—' : `${e.delaiMoyen} j`,
+      ].map(T)
+    ),
+    foot: [['Total', t.nbSeances, formatDuree(t.heures), fcfa(t.tauxMoyen), fcfa(t.montant), fcfa(t.facture), fcfa(t.paye), fcfa(t.resteAEncaisser), ''].map(T)],
+    styles: { font: 'helvetica', fontSize: 7.8, cellPadding: 1.8 },
+    headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+    footStyles: { fillColor: [238, 242, 255], textColor: [15, 23, 42], fontStyle: 'bold' },
+    columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' } },
+  })
+  doc.setFontSize(8.5)
+  doc.setTextColor(...ARDOISE)
+  doc.text(
+    T('Rémunération : séances effectuées sur la période. Facturé / payé : factures mensuelles émises pour les mois de la période.'),
+    14,
+    doc.lastAutoTable.finalY + 8
+  )
+  piedDePage(doc)
+  return doc
+}

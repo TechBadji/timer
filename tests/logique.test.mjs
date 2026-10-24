@@ -234,3 +234,33 @@ console.log('\nTous les tests de logique passent.')
   assert.equal(w.alertes.length, 2)
   console.log('✓ pilotage')
 }
+
+/* ---- bilan annuel ---- */
+{
+  const { bilanAnnuel, bornesAnnee } = await import('../src/lib/bilan.js')
+  assert.deepEqual(bornesAnnee(2025, 'universitaire'), { debut: '2025-10-01', fin: '2026-09-30', label: '2025-2026' })
+  const lot = [
+    s(1, 10, '2026-03-02', '08:00', '12:00', 'presentiel', 'fait', 10000),
+    s(2, 10, '2026-03-09', '08:00', '10:00', 'presentiel', 'fait', 13000),
+    s(3, 10, '2026-03-16', '08:00', '10:00', 'presentiel', 'annule', 10000),
+    s(4, 11, '2025-12-01', '08:00', '10:00', 'presentiel', 'fait', 10000), // hors année civile 2026
+  ]
+  const pays = [
+    { ecoleId: 1, mois: '2026-03', statut: 'paye', montant: 66000, dateFacture: '2026-04-01', datePaiement: '2026-04-21' },
+    { ecoleId: 1, mois: '2026-04', statut: 'facture', montant: 20000, dateFacture: '2026-05-01' },
+  ]
+  const b = bilanAnnuel(lot, pays, { ...ctx, annee: 2026, type: 'civile', delaiJours: 30, aujourdhui: '2026-10-24' })
+  assert.equal(b.ecoles.length, 1)
+  const [e] = b.ecoles
+  assert.equal(e.heures, 6)
+  assert.equal(e.montant, 66000)
+  assert.equal(e.tauxMoyen, 11000)
+  assert.equal(e.nbAnnulees, 1)
+  assert.equal(e.facture, 86000)
+  assert.equal(e.resteAEncaisser, 20000)
+  assert.equal(e.enRetard, 1)
+  assert.equal(e.delaiMoyen, 20)
+  const u = bilanAnnuel(lot, pays, { ...ctx, annee: 2025, type: 'universitaire', aujourdhui: '2026-10-24' })
+  assert.equal(u.totaux.nbSeances, 3)
+  console.log('✓ bilan annuel')
+}

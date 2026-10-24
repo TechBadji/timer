@@ -12,13 +12,15 @@ import LoginPage from './pages/LoginPage'
 const CalendrierPage = lazy(() => import('./pages/CalendrierPage'))
 const MatieresPage = lazy(() => import('./pages/MatieresPage'))
 const RecapPage = lazy(() => import('./pages/RecapPage'))
+const PilotagePage = lazy(() => import('./pages/PilotagePage'))
 const ReglagesPage = lazy(() => import('./pages/ReglagesPage'))
-import { IconeCalendrier, IconeLivre, IconeGraphique, IconeReglages, IconeSortie } from './components/icons'
+import { IconeCalendrier, IconeLivre, IconeGraphique, IconeTendance, IconeReglages, IconeSortie } from './components/icons'
 
 const ONGLETS = [
   { chemin: 'calendrier', label: 'Calendrier', Icone: IconeCalendrier },
   { chemin: 'matieres', label: 'Matières', Icone: IconeLivre },
   { chemin: 'recap', label: 'Récap', Icone: IconeGraphique },
+  { chemin: 'pilotage', label: 'Pilotage', Icone: IconeTendance },
   { chemin: 'reglages', label: 'Réglages', Icone: IconeReglages },
 ]
 
@@ -71,7 +73,7 @@ export default function App() {
   }, [])
 
   const Page =
-    { calendrier: CalendrierPage, matieres: MatieresPage, recap: RecapPage, reglages: ReglagesPage }[chemin] ||
+    { calendrier: CalendrierPage, matieres: MatieresPage, recap: RecapPage, pilotage: PilotagePage, reglages: ReglagesPage }[chemin] ||
     CalendrierPage
 
   // Le calendrier occupe toute la largeur disponible ; les autres écrans gardent

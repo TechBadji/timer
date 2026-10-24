@@ -208,3 +208,29 @@ console.log('\nTous les tests de logique passent.')
   assert.equal(ics.match(/BEGIN:VEVENT/g).length, 2)
   console.log('✓ export iCal')
 }
+
+/* ---- pilotage ---- */
+{
+  const { previsionnel, chargeHebdo } = await import('../src/lib/pilotage.js')
+  const lot = [
+    s(1, 10, '2026-09-07', '08:00', '10:00', 'presentiel', 'fait', 10000),
+    s(2, 10, '2026-10-05', '08:00', '11:00', 'presentiel', 'planifie', 10000),
+    s(3, 11, '2026-10-06', '08:00', '09:00', 'presentiel', 'annule', 10000),
+  ]
+  const p = previsionnel(lot, { matieres, tauxParCle: new Map([['1|Master', 10000]]), depuis: '2026-09', nbMois: 2 })
+  assert.deepEqual(p.mois.map((m) => [m.mois, m.acquis, m.planifie]), [['2026-09', 20000, 0], ['2026-10', 0, 30000]])
+  const reseaux = p.aProgrammer.find((x) => x.matiere.id === 10)
+  assert.equal(reseaux.heures, 35) // 40 h − 2 faites − 3 planifiées
+  assert.equal(reseaux.montant, 350000)
+
+  // Lundi 07/09 → jeudi 10/09 : quatre soirées d'affilée, 4 × 3 h + 14 h de jour.
+  const soirs = [7, 8, 9, 10].map((j) => s(100 + j, 10, `2026-09-${String(j).padStart(2, '0')}`, '18:30', '21:30', 'presentiel', 'planifie'))
+  const jour = s(200, 11, '2026-09-11', '08:00', '22:00', 'presentiel', 'planifie')
+  const [w] = chargeHebdo([...soirs, jour], { depuis: '2026-09-09', nbSemaines: 1, heureSoir: '18:00', maxHebdo: 25, maxSoirs: 3 })
+  assert.equal(w.debut, '2026-09-07')
+  assert.equal(w.heures, 26)
+  assert.equal(w.soireesConsecutives, 4)
+  assert.equal(w.journeeMax, 14)
+  assert.equal(w.alertes.length, 2)
+  console.log('✓ pilotage')
+}

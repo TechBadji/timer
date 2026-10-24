@@ -192,6 +192,12 @@ export default function ReglagesPage({ referentiel, seances }) {
             <Champ label="Alerte quota (%)" aide="Seuil de progression">
               <SaisieSynchro type="number" min="50" max="100" step="5" valeur={reglages.seuilAlerteQuota} onCommit={(v) => majReglage('seuilAlerteQuota', Number(v))} />
             </Champ>
+            <Champ label="Charge max (h/semaine)" aide="Seuil d'alerte du pilotage">
+              <SaisieSynchro type="number" min="1" step="1" valeur={reglages.chargeMaxHebdo ?? 25} onCommit={(v) => majReglage('chargeMaxHebdo', Number(v))} />
+            </Champ>
+            <Champ label="Soirées d'affilée max" aide="Au-delà, semaine signalée">
+              <SaisieSynchro type="number" min="1" max="7" step="1" valeur={reglages.soireesConsecutivesMax ?? 3} onCommit={(v) => majReglage('soireesConsecutivesMax', Number(v))} />
+            </Champ>
             <Champ label="Remise des notes (jours)" aide="Après une évaluation">
               <SaisieSynchro type="number" min="1" step="1" valeur={reglages.delaiRemiseNotesJours ?? 14} onCommit={(v) => majReglage('delaiRemiseNotesJours', Number(v))} />
             </Champ>

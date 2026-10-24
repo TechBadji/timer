@@ -30,6 +30,8 @@ export const REGLAGES_DEFAUT = {
   seuilAlerteQuota: 90, // % de progression déclenchant l'alerte "quota proche"
   autoFait: true, // marquer automatiquement "effectuée" une séance passée
   enseignant: 'Elias Badji',
+  chargeMaxHebdo: 25, // heures de cours par semaine au-delà desquelles la semaine est signalée
+  soireesConsecutivesMax: 3, // soirées de cours d'affilée tolérées
   delaiRemiseNotesJours: 14, // délai pour remettre les notes après une évaluation
   delaiPaiementJours: 30, // au-delà, une facture non réglée passe « en retard »
   trajets: {}, // minutes de trajet par paire d'écoles (clé lib/conflicts.js → cleTrajet), prioritaires sur trajetMinutes

@@ -33,6 +33,12 @@ export const IconeGraphique = (p) => (
     <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
   </Svg>
 )
+export const IconeTendance = (p) => (
+  <Svg {...p}>
+    <path d="M3 17l6-6 4 4 8-8" />
+    <path d="M15 7h6v6" />
+  </Svg>
+)
 export const IconeReglages = (p) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="3" />

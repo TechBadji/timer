@@ -1,4 +1,4 @@
-// Micro-routeur par hash : suffisant pour 4 écrans, et compatible PWA hors-ligne.
+// Micro-routeur par hash : suffisant pour 5 écrans, et compatible PWA hors-ligne.
 import { useCallback, useEffect, useState } from 'react'
 
 const lire = () => {

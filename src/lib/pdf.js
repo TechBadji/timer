@@ -107,7 +107,7 @@ export function pdfEmploiDuTemps(seances, { matieresById, ecolesById, titre, per
 }
 
 /** Récapitulatif mensuel complet : totaux, répartitions et détail des séances. */
-export function pdfRecapMensuel(recap, { ecolesById, enseignant, precedent, paiementsParEcole }) {
+export function pdfRecapMensuel(recap, { ecolesById, enseignant, precedent, paiementsParEcole, avancementParMatiere = new Map() }) {
   const doc = nouveauDoc()
   entete(doc, `Récapitulatif ${moisLabel(recap.mois)}`, 'Heures et rémunération', enseignant)
 
@@ -200,11 +200,26 @@ export function pdfRecapMensuel(recap, { ecolesById, enseignant, precedent, paie
   // Détail des matières
   autoTable(doc, {
     startY: doc.lastAutoTable.finalY + 6,
-    head: [['Matière', 'École', 'Niveau', 'Classes', 'Heures', 'Montant']],
-    body: recap.parMatiere.map((m) => [m.nom, m.code, m.niveau, libelleClasses(m) || '—', formatDuree(m.heures), fcfa(m.montant)].map(T)),
-    styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2 },
+    head: [['Matière', 'École', 'Niveau', 'Classes', 'Heures', 'Montant', 'Faites', 'Restantes']],
+    body: recap.parMatiere.map((m) => {
+      // Faites / restantes : depuis le début de la matière, pas seulement ce mois.
+      const a = avancementParMatiere.get(m.matiereId)
+      const restantes = !a || !a.quota ? '—' : a.nbRestantes === 0 ? 'Réalisé' : `${a.nbRestantes === null ? '?' : `~${a.nbRestantes}`} (${formatDuree(a.heuresRestantes)})`
+      return [m.nom, m.code, m.niveau, libelleClasses(m) || '—', formatDuree(m.heures), fcfa(m.montant), a ? String(a.nbFaites) : '—', restantes].map(T)
+    }),
+    styles: { font: 'helvetica', fontSize: 8, cellPadding: 1.8 },
     headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+    columnStyles: { 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'center' }, 7: { halign: 'right' } },
   })
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7.5)
+  doc.setTextColor(...ARDOISE)
+  const note = doc.splitTextToSize(
+    T('Faites / restantes : depuis le début de chaque matière, au regard de son volume horaire (estimation sur la durée moyenne des séances).'),
+    182
+  )
+  if (doc.lastAutoTable.finalY + 8 < 285) doc.text(note, 14, doc.lastAutoTable.finalY + 4)
+  doc.setTextColor(15, 23, 42)
 
   // Détail des séances
   doc.addPage()

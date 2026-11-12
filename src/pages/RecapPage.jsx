@@ -80,6 +80,9 @@ export default function RecapPage({ referentiel, seances }) {
       enseignant: reglages.enseignant,
       precedent: recapPrec.nbSeances ? recapPrec : null,
       paiementsParEcole,
+      avancementParMatiere: new Map(
+        recap.parMatiere.filter((m) => matieresById.has(m.matiereId)).map((m) => [m.matiereId, seancesMatiere(matieresById.get(m.matiereId), seances)])
+      ),
     })
     const res = await partagerOuTelecharger(doc, `recap-${mois}.pdf`, `Récapitulatif ${moisLabel(mois)}`)
     toast(res === 'partage' ? 'Récapitulatif partagé' : 'PDF téléchargé')

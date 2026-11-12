@@ -40,6 +40,28 @@ export function progression(matiere, seances, seuilAlerte = 90) {
   }
 }
 
+/**
+ * Séances d'une matière depuis son début : effectuées, planifiées, et nombre de
+ * séances encore nécessaires pour réaliser le volume horaire (durée moyenne
+ * des séances de la matière ; null si aucune séance pour l'estimer).
+ */
+export function seancesMatiere(matiere, seances) {
+  const siennes = seances.filter((s) => s.matiereId === matiere.id && s.statut !== 'annule')
+  const faites = siennes.filter((s) => s.statut === 'fait')
+  const heuresFaites = faites.reduce((t, s) => t + heuresDe(s), 0)
+  const quota = Number(matiere.volumeHoraire) || 0
+  const heuresRestantes = Math.max(0, quota - heuresFaites)
+  const moyenne = siennes.length ? siennes.reduce((t, s) => t + heuresDe(s), 0) / siennes.length : 0
+  return {
+    quota,
+    nbFaites: faites.length,
+    nbPlanifiees: siennes.length - faites.length,
+    heuresFaites,
+    heuresRestantes,
+    nbRestantes: heuresRestantes === 0 ? 0 : moyenne > 0 ? Math.ceil(heuresRestantes / moyenne - 1e-9) : null,
+  }
+}
+
 const cumul = (map, cle, base, s) => {
   if (!map.has(cle)) map.set(cle, { ...base, heures: 0, heuresFaites: 0, heuresPlanifiees: 0, montant: 0, montantFait: 0, nb: 0, nbFaites: 0 })
   const e = map.get(cle)

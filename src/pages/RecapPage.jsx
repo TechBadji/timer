@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList } from 'recharts'
-import { construireRecap, moisDisponibles, variation } from '../lib/stats'
+import { construireRecap, moisDisponibles, seancesMatiere, variation } from '../lib/stats'
 import { aujourdhui, formatDuree, moisCourant, moisLabel, moisLabelCourt, moisPrecedent, moisSuivant } from '../lib/dates'
 import { fcfa, fcfaCourt } from '../lib/money'
 import { basculerPaiement } from '../data/repo'
@@ -318,17 +318,38 @@ export default function RecapPage({ referentiel, seances }) {
           <section className="carte overflow-hidden">
             <h2 className="px-4 pb-1 pt-4 text-[14px] font-bold text-ink-800">Par matière</h2>
             <ul className="divide-y divide-ink-100">
-              {recap.parMatiere.map((m) => (
+              {recap.parMatiere.map((m) => {
+                const matiere = matieresById.get(m.matiereId)
+                const avancement = matiere && seancesMatiere(matiere, seances)
+                return (
                 <li key={m.matiereId} className="flex items-center gap-3 px-4 py-2.5">
                   <Puce couleur={m.couleur}>{m.code}</Puce>
-                  <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink-800">
-                    {m.nom}
-                    {m.classes?.length > 0 && <span className="font-normal text-ink-400"> · {m.classes.join(', ')}</span>}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13.5px] font-medium text-ink-800">
+                      {m.nom}
+                      {m.classes?.length > 0 && <span className="font-normal text-ink-400"> · {m.classes.join(', ')}</span>}
+                    </span>
+                    {avancement && (
+                      <span className="block truncate text-[11.5px] tabular text-ink-500">
+                        {avancement.nbFaites} séance{avancement.nbFaites > 1 ? 's' : ''} faite{avancement.nbFaites > 1 ? 's' : ''}
+                        {avancement.quota > 0 &&
+                          (avancement.nbRestantes === 0 ? (
+                            <span className="font-semibold text-emerald-700"> · volume horaire réalisé</span>
+                          ) : (
+                            <>
+                              {' · '}
+                              {avancement.nbRestantes === null ? '?' : `~${avancement.nbRestantes}`} restante{avancement.nbRestantes > 1 ? 's' : ''} (
+                              {formatDuree(avancement.heuresRestantes)} sur {formatDuree(avancement.quota)})
+                            </>
+                          ))}
+                      </span>
+                    )}
                   </span>
                   <span className="shrink-0 text-[12.5px] tabular text-ink-500">{formatDuree(m.heures)}</span>
                   <span className="w-24 shrink-0 text-right text-[12.5px] font-semibold tabular text-ink-700">{fcfa(m.montant)}</span>
                 </li>
-              ))}
+                )
+              })}
             </ul>
           </section>
         </div>

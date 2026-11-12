@@ -307,3 +307,20 @@ console.log('\nTous les tests de logique passent.')
   assert.equal(ecartFacture(undefined, 40000), 0)
   console.log('✓ facturation des séances effectuées')
 }
+
+/* ---- séances faites / restantes d'une matière ---- */
+{
+  const { seancesMatiere } = await import('../src/lib/stats.js')
+  const m = { id: 10, volumeHoraire: 30 }
+  const lot = [
+    s(1, 10, '2026-09-01', '08:00', '11:00', 'presentiel', 'fait'),
+    s(2, 10, '2026-09-08', '08:00', '11:00', 'presentiel', 'fait'),
+    s(3, 10, '2026-09-15', '08:00', '11:00', 'presentiel', 'planifie'),
+    s(4, 10, '2026-09-22', '08:00', '11:00', 'presentiel', 'annule'),
+    s(5, 11, '2026-09-01', '08:00', '11:00', 'presentiel', 'fait'),
+  ]
+  assert.deepEqual(seancesMatiere(m, lot), { quota: 30, nbFaites: 2, nbPlanifiees: 1, heuresFaites: 6, heuresRestantes: 24, nbRestantes: 8 })
+  assert.equal(seancesMatiere({ id: 10, volumeHoraire: 6 }, lot).nbRestantes, 0, 'volume réalisé')
+  assert.equal(seancesMatiere({ id: 99, volumeHoraire: 20 }, lot).nbRestantes, null, 'aucune séance pour estimer')
+  console.log('✓ séances faites / restantes')
+}
